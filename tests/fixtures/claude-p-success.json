@@ -1,0 +1,36 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "result": "{\"name\":\"Ana\",\"years\":6}",
+ "structured_output": {
+  "name": "Ana",
+  "years": 6
+ },
+ "total_cost_usd": 0.000264,
+ "usage": {
+  "input_tokens": 2,
+  "output_tokens": 74,
+  "cache_read_input_tokens": 0,
+  "cache_creation_input_tokens": 1134
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 74,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 1134,
+   "webSearchRequests": 0,
+   "costUSD": 0.000264,
+   "contextWindow": 1000000,
+   "maxOutputTokens": 128000,
+   "thinkingTokens": 0,
+   "cacheCreationEphemeral5mInputTokens": 0,
+   "cacheCreationEphemeral1hInputTokens": 1134,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "api_error_status": null
+}

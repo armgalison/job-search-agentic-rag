@@ -1,0 +1,41 @@
+appId: dev.local.jobsearchrag
+productName: Job Search RAG
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+  # Only the Windows binaries are needed in the Windows build
+  - "!node_modules/onnxruntime-web/**"
+  # pdf.js: only the Node (legacy) build is used by the app; skip the browser builds, sourcemaps and the canvas addon
+  - "!node_modules/pdfjs-dist/{build,web,image_decoders,types}/**"
+  - "!node_modules/@napi-rs/**"
+  - "!node_modules/onnxruntime-node/bin/napi-v*/linux/**"
+  - "!node_modules/onnxruntime-node/bin/napi-v*/darwin/**"
+  - "!node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**"
+  - "!node_modules/better-sqlite3/prebuilds/{linux,linuxmusl,darwin}-*.node"
+  - "!node_modules/better-sqlite3/{deps,src}/**"
+  - "!node_modules/@img/sharp-*linux*/**"
+  - "!node_modules/@img/sharp-*darwin*/**"
+  - "!**/*.{map,md,ts}"
+  - "**/*.d.ts"
+asarUnpack:
+  # Native modules (and their DLLs) must live outside the asar archive
+  - "**/*.node"
+  - "node_modules/onnxruntime-node/**"
+  - "node_modules/@img/**"
+  # pdf.js is an ES module loaded by file URL (see src/main/services/importResume.ts)
+  - "node_modules/pdfjs-dist/**"
+# Native modules ship N-API prebuilds for every platform; never try to compile them for Windows from Linux
+npmRebuild: false
+nodeGypRebuild: false
+win:
+  # zip = unzip and run "Job Search RAG.exe". (NSIS installer/portable targets need Wine when built on Linux;
+  # build them from Windows with `npm run build:win` if you want an installer.)
+  target:
+    - target: zip
+      arch: [x64]
+  # Editing the .exe resources/signing needs Wine on Linux; skipped for local test builds (unsigned)
+  signAndEditExecutable: false
+  artifactName: "${productName}-${version}-win-x64.${ext}"
