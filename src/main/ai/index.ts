@@ -4,6 +4,7 @@ import type * as z from 'zod/v4'
 import type { AiOperation } from '@shared/types'
 import { getKey, getSettings } from '../settings'
 import { budgetBlock, recordUsage, warnIfNearLimit } from '../usage'
+import { logger } from '../log'
 import { ClaudeProvider } from './claude'
 import { ClaudeCliProvider, resolveCliPath } from './claudeCli'
 import { LocalEmbedder } from './localEmbed'
@@ -60,15 +61,25 @@ export class MeteredChat implements ChatProvider {
   private async metered<T>(call: () => Promise<{ value: T; usage: CallUsage }>): Promise<T> {
     const s = getSettings()
     const blocked = budgetBlock(s.budget, this.inner.billing)
-    if (blocked) throw new AiError(blocked)
+    if (blocked) {
+      logger.warn('ai', `${this.operation}: blocked by budget`, blocked)
+      throw new AiError(blocked)
+    }
     const prices = effectivePrices(s.prices)
     const base = { provider: this.inner.id, operation: this.operation, billing: this.inner.billing }
+    const started = Date.now()
+    logger.info('ai', `${this.operation}: calling ${this.inner.id} (${this.inner.model})…`)
     try {
       const { value, usage } = await call()
-      recordUsage({ ...base, ...usage, model: usage.model ?? this.inner.model }, prices)
+      const rec = recordUsage({ ...base, ...usage, model: usage.model ?? this.inner.model }, prices)
+      logger.info(
+        'ai',
+        `${this.operation}: done in ${((Date.now() - started) / 1000).toFixed(1)}s — ${rec.inputTokens + rec.cacheReadTokens + rec.cacheWriteTokens} in / ${rec.outputTokens} out tokens${rec.costUsd != null ? `, ${rec.billing === 'subscription' ? '≈' : ''}$${rec.costUsd.toFixed(4)}` : ''}`
+      )
       warnIfNearLimit(s.budget)
       return value
     } catch (err) {
+      logger.error('ai', `${this.operation}: failed after ${((Date.now() - started) / 1000).toFixed(1)}s — ${(err as Error).message}`)
       const usage = err instanceof AiError ? err.usage : undefined
       recordUsage(
         {

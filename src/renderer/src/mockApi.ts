@@ -26,7 +26,10 @@ import {
   type AiOperation,
   type UsageRecord,
   type UsageSummary,
-  type UsageTotals
+  type UsageTotals,
+  type LogEntry,
+  type LogLevel,
+  type LogSource
 } from '@shared/types'
 import { itemToFacts } from '../../main/rag/facts'
 import { coverLetterHtml, resumeHtml } from '../../main/docs/templates'
@@ -154,8 +157,17 @@ function addFact(text: string, source: FactSource): Fact {
   return f
 }
 
+// ---------- mocked log (Console page) ----------
+const mockLogs: LogEntry[] = []
+function mockLog(level: LogLevel, source: LogSource, message: string, detail = '') {
+  const entry: LogEntry = { id: mockLogs.length + 1, ts: new Date().toISOString(), level, source, message, detail }
+  mockLogs.push(entry)
+  for (const l of listeners) l({ type: 'log', entry })
+}
+
 // ---------- mocked usage log (mock AI calls are free: billing 'local') ----------
 function mockUsage(operation: AiOperation, inputTokens: number, outputTokens: number) {
+  mockLog('info', 'ai', `${operation}: mock AI call (${inputTokens} in / ${outputTokens} out tokens, free)`)
   db.usage.unshift({
     id: nextId(),
     createdAt: now(),
@@ -570,6 +582,9 @@ export function createMockApi(): Api {
       },
       async openJob(jobId) {
         window.open(jobOrThrow(jobId).url, '_blank', 'noopener')
+      },
+      async openJobExternal(jobId) {
+        window.open(jobOrThrow(jobId).url, '_blank', 'noopener')
       }
     },
     settings: {
@@ -612,6 +627,17 @@ export function createMockApi(): Api {
         mockUsage('test', 20, 10)
         persist('usage-changed')
         return '[browser mode] Mock AI — no real call was made.'
+      }
+    },
+    logs: {
+      async list() {
+        return clone(mockLogs)
+      },
+      async clear() {
+        mockLogs.length = 0
+      },
+      async filePath() {
+        return null
       }
     },
     usage: {

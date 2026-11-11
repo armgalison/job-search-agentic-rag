@@ -3,6 +3,7 @@ import { app, BrowserWindow, shell } from 'electron'
 import { openDb } from './db/client'
 import { registerIpc } from './ipc'
 import { setEventSink } from './events'
+import { initLogFile, logger } from './log'
 import { registerLinkedInIpc } from './linkedin/window'
 import type { AppEvent } from '@shared/types'
 
@@ -38,8 +39,12 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  initLogFile(join(app.getPath('userData'), 'logs'))
+  logger.info('app', `Starting Job Search RAG ${app.getVersion()} (Electron ${process.versions.electron}, ${process.platform} ${process.arch})`)
   openDb(join(app.getPath('userData'), 'job-search.db'))
   setEventSink(emit)
+  process.on('uncaughtException', (err) => logger.error('app', `Uncaught exception: ${err.message}`, err.stack))
+  process.on('unhandledRejection', (err) => logger.error('app', `Unhandled rejection: ${(err as Error)?.message ?? String(err)}`, (err as Error)?.stack))
   registerIpc(() => mainWin, emit)
   registerLinkedInIpc(emit)
   createWindow()

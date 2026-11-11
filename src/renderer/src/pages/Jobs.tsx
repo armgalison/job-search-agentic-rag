@@ -202,6 +202,9 @@ function JobDetail({ job, onEdit }: { job: Job; onEdit: (jobId: number) => void 
           <button className="btn-sec" onClick={() => run(() => api.linkedin.openJob(job.id))}>
             Open on LinkedIn
           </button>
+          <button className="btn-sec" title="Open this job in your default browser" onClick={() => run(() => api.linkedin.openJobExternal(job.id))}>
+            Open in browser ↗
+          </button>
           <select className="input w-auto" value={job.status} onChange={(e) => run(() => api.jobs.setStatus(job.id, e.target.value as JobStatus))}>
             {Object.entries(STATUS).map(([k, v]) => (
               <option key={k} value={k}>

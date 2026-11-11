@@ -13,7 +13,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve('src/preload/index.ts'),
-          linkedin: resolve('src/preload/linkedin.ts')
+          linkedin: resolve('src/preload/linkedin.ts'),
+          toolbar: resolve('src/preload/toolbar.ts')
         }
       }
     }

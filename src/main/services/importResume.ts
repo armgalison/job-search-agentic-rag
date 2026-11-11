@@ -7,6 +7,7 @@ import { indexPending, syncItemFacts } from '../rag'
 import type { ItemDataMap, ItemKind, Profile } from '@shared/types'
 import { pdfToText, type PdfJsLike } from '@shared/pdfText'
 import { ImportedProfileSchema } from './schemas'
+import { logger } from '../log'
 
 /**
  * Loads pdf.js's Node ("legacy") build, which recovers broken xref tables.
@@ -40,8 +41,10 @@ export async function extractText(file: string): Promise<string> {
 
 /** Reads an existing resume, extracts its data with AI and fills the profile (merging with what already exists). */
 export async function importResume(file: string): Promise<{ imported: number }> {
+  logger.info('import', `Reading ${file}`)
   const text = (await extractText(file)).trim()
   if (!text) throw new Error('Could not extract text from the file.')
+  logger.info('import', `Extracted ${text.length} characters; sending to AI to map into the profile…`)
 
   const data = await getChat('import-resume').json({
     name: 'imported_profile',
@@ -78,6 +81,7 @@ export async function importResume(file: string): Promise<{ imported: number }> 
   add('certification', data.certifications, (d) => d.name)
   add('language', data.languages, (d) => d.name)
 
+  logger.info('import', `Imported ${imported} new item(s) into the profile`)
   await indexPending()
   return { imported }
 }

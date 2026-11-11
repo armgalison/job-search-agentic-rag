@@ -1,3 +1,4 @@
+import { logger } from '../log'
 import type { EmbedProvider } from './provider'
 
 type Extractor = (texts: string[], opts: { pooling: 'mean'; normalize: boolean }) => Promise<{ tolist(): number[][] }>
@@ -24,10 +25,26 @@ export class LocalEmbedder implements EmbedProvider {
       p = (async () => {
         const t = await import('@huggingface/transformers')
         t.env.cacheDir = this.cacheDir
-        return (await t.pipeline('feature-extraction', this.model, { dtype: 'q8' })) as unknown as Extractor
+        logger.info('embeddings', `Loading local embedding model ${this.model} (downloaded once, ~120 MB)…`)
+        let lastPct = -10
+        const ex = (await t.pipeline('feature-extraction', this.model, {
+          dtype: 'q8',
+          // Download progress, throttled to every 10%
+          progress_callback: (p: { status?: string; file?: string; progress?: number }) => {
+            if (p.status === 'progress' && typeof p.progress === 'number' && /onnx/i.test(p.file ?? '') && p.progress - lastPct >= 10) {
+              lastPct = Math.floor(p.progress / 10) * 10
+              logger.info('embeddings', `Downloading ${p.file}: ${lastPct}%`)
+            }
+          }
+        } as never)) as unknown as Extractor
+        logger.info('embeddings', 'Local embedding model ready')
+        return ex
       })()
       cache.set(this.model, p)
-      p.catch(() => cache.delete(this.model))
+      p.catch((err: Error) => {
+        cache.delete(this.model)
+        logger.error('embeddings', `Could not load the embedding model: ${err.message}`)
+      })
     }
     return p
   }

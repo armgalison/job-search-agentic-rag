@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "postinstall": "electron-builder install-app-deps",
-    "build:win": "npm install --no-save --force @img/sharp-win32-x64@0.35.5 && electron-vite build && electron-builder --win"
+    "build:win": "electron-vite build && electron-builder --win"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",

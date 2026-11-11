@@ -280,6 +280,28 @@ export interface UsageSummary {
   prices: Record<string, ModelPrice>
 }
 
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+export type LogSource = 'app' | 'linkedin' | 'ai' | 'cli' | 'embeddings' | 'import' | 'ipc' | 'docs'
+
+export interface LogEntry {
+  id: number
+  ts: string
+  level: LogLevel
+  source: LogSource
+  message: string
+  detail: string
+}
+
+/** Result of reading the job currently open on LinkedIn, with diagnostics of what was found where. */
+export interface CaptureDiagnostics {
+  url: string
+  linkedinId: string | null
+  titleFrom: string
+  companyFrom: string
+  descriptionFrom: string
+  descriptionLength: number
+}
+
 export interface CliStatus {
   found: boolean
   loggedIn: boolean
@@ -374,6 +396,7 @@ export interface Api {
     open(url?: string): Promise<void>
     search(q: JobSearchQuery): Promise<void>
     openJob(jobId: number): Promise<void>
+    openJobExternal(jobId: number): Promise<void>
   }
   settings: {
     get(): Promise<Settings>
@@ -392,6 +415,12 @@ export interface Api {
     recent(limit?: number): Promise<UsageRecord[]>
     clear(): Promise<void>
   }
+  logs: {
+    list(): Promise<LogEntry[]>
+    clear(): Promise<void>
+    /** Path of the log file on disk (null in browser mode) */
+    filePath(): Promise<string | null>
+  }
   onEvent(cb: (e: AppEvent) => void): () => void
 }
 
@@ -400,4 +429,5 @@ export type AppEvent =
   | { type: 'applications-changed' }
   | { type: 'facts-changed' }
   | { type: 'usage-changed' }
+  | { type: 'log'; entry: LogEntry }
   | { type: 'toast'; level: 'info' | 'error'; message: string }

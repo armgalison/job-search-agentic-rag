@@ -6,14 +6,16 @@ import Jobs from './pages/Jobs'
 import ProfilePage from './pages/Profile'
 import SettingsPage from './pages/Settings'
 import UsagePage from './pages/Usage'
+import ConsolePage from './pages/Console'
 
-export type Route = { page: 'profile' } | { page: 'jobs'; jobId?: number } | { page: 'editor'; jobId: number } | { page: 'applications' } | { page: 'usage' } | { page: 'settings' }
+export type Route = { page: 'profile' } | { page: 'jobs'; jobId?: number } | { page: 'editor'; jobId: number } | { page: 'applications' } | { page: 'usage' } | { page: 'console' } | { page: 'settings' }
 
 const NAV: { page: Route['page']; label: string; icon: string }[] = [
   { page: 'profile', label: 'My profile', icon: '👤' },
   { page: 'jobs', label: 'Jobs', icon: '💼' },
   { page: 'applications', label: 'Applications', icon: '📨' },
   { page: 'usage', label: 'Usage', icon: '💲' },
+  { page: 'console', label: 'Console', icon: '🖥️' },
   { page: 'settings', label: 'Settings', icon: '⚙️' }
 ]
 
@@ -70,6 +72,7 @@ export default function App() {
           {route.page === 'editor' && <Editor jobId={route.jobId} onBack={() => setRoute({ page: 'jobs', jobId: route.jobId })} />}
           {route.page === 'applications' && <Applications onOpen={(jobId) => setRoute({ page: 'editor', jobId })} />}
           {route.page === 'usage' && <UsagePage />}
+          {route.page === 'console' && <ConsolePage />}
           {route.page === 'settings' && <SettingsPage />}
         </main>
       </div>

@@ -6,6 +6,7 @@ directories:
 files:
   - out/**
   - package.json
+  - "!scripts/**"
   # Only the Windows binaries are needed in the Windows build
   - "!node_modules/onnxruntime-web/**"
   # pdf.js: only the Node (legacy) build is used by the app; skip the browser builds, sourcemaps and the canvas addon
@@ -28,6 +29,8 @@ asarUnpack:
   # pdf.js is an ES module loaded by file URL (see src/main/services/importResume.ts)
   - "node_modules/pdfjs-dist/**"
 # Native modules ship N-API prebuilds for every platform; never try to compile them for Windows from Linux
+# Ensures and verifies the target platform's native binaries (sharp, SQLite, onnxruntime) — see scripts/before-pack.cjs
+beforePack: scripts/before-pack.cjs
 npmRebuild: false
 nodeGypRebuild: false
 win:

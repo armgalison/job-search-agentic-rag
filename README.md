@@ -24,13 +24,16 @@ npm run build:win  # Windows build → dist/Job Search RAG-<version>-win-x64.zip
    Pro/Max plan through the Claude Code CLI, no API key needed. Install Claude Code, run `claude` once and log in,
    then click **Check CLI**. Alternatives: Claude API (API key), OpenAI, or Ollama (local). Settings save automatically.
 2. **My profile** → import your current resume (PDF/DOCX) and/or fill in experience, education, skills…
-3. **Jobs** → *Open search on LinkedIn*. Log in once in the LinkedIn window (the session is kept).
+3. **Jobs** → *Open search on LinkedIn*. Log in once in the LinkedIn window with your **LinkedIn email and password**
+   (the session is kept). *Continue with Google* does not work inside apps — Google blocks embedded browsers; if your
+   account only uses Google, create a LinkedIn password once via *Forgot password* (the panel explains it).
 4. On LinkedIn, use the floating panel: **Capture & analyze job** → the fit score (%) shows in the panel and in the app.
 5. In the app, answer the job's **gaps** (each answer becomes a new fact) and click **Generate resume + cover letter**.
 6. Review in the **Editor** and export to PDF/DOCX.
 7. In Easy Apply, click **Fill Easy Apply** on each step. Green = saved answer, blue = AI suggestion, orange = fill it in
    yourself. The tailored resume is attached automatically. **You review and click Submit** — the app never submits.
-8. **Usage** shows what every AI call cost and enforces your budget.
+8. **Usage** shows what every AI call cost and enforces your budget. **Console** shows what the app is doing (and why
+   something failed); the LinkedIn panel has a mini console with *Copy log* too.
 
 ## Features
 
@@ -75,6 +78,7 @@ session) after you type `RESET`. Exported files and the downloaded embedding mod
 | Documents | `src/main/docs/` — HTML template → PDF (`printToPDF`) and DOCX (`docx`) |
 | LinkedIn | `src/main/linkedin/window.ts` + `src/preload/linkedin.ts` — persistent-session window and injected panel |
 | IPC | `src/main/ipc.ts`, `src/preload/index.ts`, typed API in `src/shared/types.ts` |
+| Logging | `src/main/log.ts` — in-memory + `<userData>/logs/app.log`, streamed to the Console page and the LinkedIn panel |
 | UI | `src/renderer/src/pages/` (browser mode: `src/renderer/src/mockApi.ts`) |
 
 Data lives in `app.getPath('userData')/job-search.db` (Windows: `%APPDATA%\job-search-rag`). API keys are encrypted
@@ -84,8 +88,9 @@ with `safeStorage` (OS keychain) and never reach the renderer.
 
 `npm run build:win` produces a zip (unzip and run `Job Search RAG.exe`). It is built from Linux/WSL as a zip because
 an NSIS installer needs Wine on Linux — run the same command on Windows to get one. The build is unsigned, so
-SmartScreen may warn on first launch (*More info → Run anyway*). Native modules ship Windows prebuilds; pdf.js is
-unpacked from the asar archive because it is loaded as an ES module.
+SmartScreen may warn on first launch (*More info → Run anyway*). Native modules ship Windows prebuilds; a
+`beforePack` hook (`scripts/before-pack.cjs`) installs and verifies the target platform's native binaries (sharp,
+SQLite, onnxruntime) on every build. pdf.js is unpacked from the asar archive because it is loaded as an ES module.
 
 ## Tests
 

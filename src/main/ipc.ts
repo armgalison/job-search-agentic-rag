@@ -1,7 +1,8 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { cliOptions, getChat } from './ai'
 import { cliStatus } from './ai/claudeCli'
 import { clearUsage, recentUsage, usageSummary } from './usage'
+import { clearLogs, listLogs, logFilePath, logger } from './log'
 import { applicationsRepo, factsRepo, jobsRepo, profileRepo, qaRepo } from './db/repos'
 import * as docs from './docs'
 import { resetAllData } from './db/client'
@@ -23,6 +24,7 @@ export function registerIpc(getWin: () => BrowserWindow | null, emit: (e: AppEve
       try {
         return await fn(...(args as never[]))
       } catch (err) {
+        logger.error('ipc', `${channel} failed: ${(err as Error).message}`, (err as Error).stack)
         throw new Error((err as Error).message)
       }
     })
@@ -147,6 +149,14 @@ export function registerIpc(getWin: () => BrowserWindow | null, emit: (e: AppEve
     if (!j) throw new Error('Job not found')
     openLinkedIn(j.linkedinId ? jobUrl(j.linkedinId) : j.url)
   })
+  // Same job, in the system browser (where the user may already be signed in to LinkedIn)
+  handle('linkedin.openJobExternal', async (jobId: number) => {
+    const j = jobsRepo.get(jobId)
+    if (!j) throw new Error('Job not found')
+    const url = j.linkedinId ? jobUrl(j.linkedinId) : j.url
+    if (!/^https?:\/\//i.test(url ?? '')) throw new Error('This job has no web address')
+    await shell.openExternal(url)
+  })
 
   // settings
   handle('settings.get', () => getSettings())
@@ -154,6 +164,11 @@ export function registerIpc(getWin: () => BrowserWindow | null, emit: (e: AppEve
   handle('settings.update', (patch: never) => updateSettings(patch))
   handle('settings.setKey', (provider: 'claude' | 'openai', key: string) => setKey(provider, key))
   handle('settings.cliStatus', () => cliStatus(cliOptions()))
+
+  // logs (Console page)
+  handle('logs.list', () => listLogs())
+  handle('logs.clear', () => clearLogs())
+  handle('logs.filePath', () => logFilePath())
 
   // usage & budget
   handle('usage.summary', () => {

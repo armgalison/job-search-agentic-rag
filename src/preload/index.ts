@@ -18,9 +18,10 @@ const groups = {
   ],
   applications: ['list', 'getByJob', 'setStatus'],
   qa: ['list', 'save', 'delete'],
-  linkedin: ['open', 'search', 'openJob'],
+  linkedin: ['open', 'search', 'openJob', 'openJobExternal'],
   settings: ['get', 'save', 'update', 'setKey', 'testChat', 'cliStatus', 'resetAll'],
-  usage: ['summary', 'recent', 'clear']
+  usage: ['summary', 'recent', 'clear'],
+  logs: ['list', 'clear', 'filePath']
 } as const
 
 const api: Record<string, unknown> = {}
