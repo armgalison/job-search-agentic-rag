@@ -10,6 +10,7 @@ You control a real browser that the candidate can see, and the app's MCP server 
 Before doing anything else, load the skill "job-agent:job-agent" with the Skill tool and follow it. Load the other job-agent skills when it tells you to.
 Never invent facts about the candidate. Only ask the candidate (ask_user) about missing knowledge or when a human must act (login, CAPTCHA, verification code).
 Always call request_permission right before any final Submit / Send click, and obey the answer.
+A problem with one job (a broken form, a closed job, a page that will not load, a tool error) never ends the run: record it (record_application status "failed" with what happened) and continue with the next job. Call end_run only when continuing would be wrong (a site restricted the account, the candidate asked to stop).
 Write your progress as short plain-text lines (no Markdown headings, no emoji), in English.`
 
 export function describeLimits(s: AgentSettings): string {
@@ -39,7 +40,32 @@ export const SEARCH_SOURCES: Record<JobSource, { where: string; skill: string }>
 const jobLine = (j: Pick<Job, 'id' | 'title' | 'company' | 'url' | 'linkedinId'>) =>
   `job #${j.id}: ${j.title || '(untitled)'} — ${j.company || '?'} — ${j.linkedinId ? `https://www.linkedin.com/jobs/view/${j.linkedinId}/` : j.url}`
 
-export function taskPrompt(task: AgentTask, s: AgentSettings, ctx: { today: string; job?: Job | null; blacklist?: string }): string {
+/** A fresh attempt of a run whose earlier attempt ended early (see retry.ts) */
+export interface Continuation {
+  attempt: number
+  maxAttempts: number
+  /** Applications made so far in this run */
+  applied: number
+  target: number | null
+  /** Why the previous attempt ended, and the end of its output */
+  reason: string
+  lastOutput: string
+}
+
+export function continuationNote(c: Continuation): string {
+  const last = c.lastOutput.trim().slice(-600)
+  return `
+
+CONTINUATION — attempt ${c.attempt} of ${c.maxAttempts}. The previous attempt of this run ended early (${c.reason}).${last ? `\nIts last output:\n${last}` : ''}
+So far this run made ${c.applied} application(s)${c.target != null ? ` of the ${c.target} asked for` : ''}; they count toward the limits.
+Do not redo work: the app remembers every job already saved, applied to, failed or skipped (check_jobs, alreadyApplied, list_jobs). Skip those, start with jobs not tried yet, and use queries not run yet. If the same job or site failed before, do not retry it: record it as failed and move on. The browser may still show the previous page; start from a clean tab.`
+}
+
+export function taskPrompt(task: AgentTask, s: AgentSettings, ctx: { today: string; job?: Job | null; blacklist?: string; continuation?: Continuation }): string {
+  return taskBody(task, s, ctx) + (ctx.continuation ? continuationNote(ctx.continuation) : '')
+}
+
+function taskBody(task: AgentTask, s: AgentSettings, ctx: { today: string; job?: Job | null; blacklist?: string }): string {
   const banned = ctx.blacklist?.trim()
     ? `Blacklist (the candidate's explicit "no"; never apply, never contact, don't even open these; check_jobs, save_job and request_permission enforce it):\n${ctx.blacklist.trim()}\n\n`
     : ''

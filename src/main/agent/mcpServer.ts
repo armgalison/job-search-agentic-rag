@@ -19,7 +19,7 @@ import { getSettings } from '../settings'
 import { applicationsAtCompany, hasApplied, normalizeCompany } from './history'
 import { emailIdsInNotes, STATUS_WORD, statusMove, type EmailStatus } from './emailUpdates'
 import { agentFilesDir } from './paths'
-import { addEvent, ask, currentRun, granted, patchRun } from './session'
+import { addEvent, ask, currentRun, granted, patchRun, runFlags } from './session'
 
 /**
  * The app's own MCP server ("jobsearch"), served over Streamable HTTP on 127.0.0.1 with a random bearer token.
@@ -162,6 +162,7 @@ export function buildMcpServer(): McpServer {
             logger.warn('agent', `Could not save the answer as a fact: ${(err as Error).message}`)
           }
         }
+        if (/^stop the run/i.test(answer)) runFlags.ended = 'the candidate asked to stop'
         if (/^stop the run/i.test(answer)) return ok({ answer, instruction: 'The candidate asked to stop. Stop now and write the short report.' })
         const job = a.job_id != null ? jobsRepo.get(a.job_id) : null
         if (/^never apply to this company/i.test(answer)) {
@@ -604,6 +605,10 @@ export function buildMcpServer(): McpServer {
         email_from: z.string().default(''),
         email_subject: z.string().default(''),
         email_date: z.string().default(''),
+        email_url: z
+          .string()
+          .default('')
+          .describe('Webmail runs: the address of the open message (from the address bar), so the candidate can open it from the board. Gmail connector: leave empty.'),
         status: z.enum(['applied', 'scheduling', 'interview', 'offer', 'rejected', 'no-change']),
         summary: z.string().min(1).describe('One or two sentences: what the email says'),
         next_step: z.string().default('').describe("What the candidate has to do, with any deadline or date (e.g. 'pick a slot at <link> by Friday', 'interview Tue 25 Nov 14:00 BRT')"),
@@ -620,6 +625,7 @@ export function buildMcpServer(): McpServer {
         email_from: string
         email_subject: string
         email_date: string
+        email_url: string
         status: EmailStatus
         summary: string
         next_step: string
@@ -653,7 +659,8 @@ export function buildMcpServer(): McpServer {
         const current: ApplicationStatus = app.status === 'draft' ? 'applied' : app.status
         const move = statusMove(current, a.status, a.force)
         if (move.refused) return ok({ recorded: false, note: move.refused })
-        const head = `Email ${emailId} (${[a.email_date, a.email_from].filter(Boolean).join(', ') || 'no date'})`
+        const link = /^https?:\/\/\S+$/i.test(a.email_url.trim()) ? ` link ${a.email_url.trim()}` : ''
+        const head = `Email ${emailId} (${[a.email_date, a.email_from].filter(Boolean).join(', ').replace(/[()]/g, '') || 'no date'})${link}`
         appendNote(
           job.id,
           `${head}: "${a.email_subject.slice(0, 200)}" — ${a.summary.slice(0, 600)}${a.next_step ? ` Next: ${a.next_step.slice(0, 300)}` : ''}${move.changed || app.status === 'draft' ? ` [→ ${STATUS_WORD[move.status]}]` : ''}`
@@ -671,6 +678,20 @@ export function buildMcpServer(): McpServer {
         return ok({ recorded: true, job_id: job.id, created, status: move.status, changed: move.changed })
       }
     )
+  )
+
+  server.registerTool(
+    'end_run',
+    {
+      description:
+        "Ends the whole run for good. The app normally starts a fresh attempt when a run ends early (after an error, or a search short of its goal); call this first when continuing would be wrong: LinkedIn or a site warned about automated activity or restricted the account, the candidate asked to stop, or a human must fix something before any more work. Not for a single job that fails: record it and move on to the next one.",
+      inputSchema: { reason: z.string().min(3).max(500) }
+    },
+    safe('end_run', ({ reason }: { reason: string }) => {
+      runFlags.ended = reason.trim()
+      addEvent({ kind: 'status', text: `The agent ended the run: ${reason.trim()}` })
+      return ok({ ended: true, instruction: 'Write the short report now and finish.' })
+    })
   )
 
   server.registerTool(

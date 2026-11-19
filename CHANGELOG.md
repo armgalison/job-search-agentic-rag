@@ -3,6 +3,17 @@
 ## Unreleased
 
 ### Features
+- **Dashboard** (new home page): headline numbers (jobs saved, applications sent, response rate, awaiting
+  scheduling, interviews/offers, spend this month) and charts: activity per week, applications by status, fit score
+  of analyzed jobs (applied vs not, with the minimum score marked) and top companies. Hover tooltips, a table view
+  for every chart, light and dark mode.
+- **Fit score badge** on every card of the Applications board.
+- **✉️ Open email** on cards in Awaiting scheduling: opens the company's email in the browser (Gmail message by id;
+  webmail runs record the message address with the new `email_url` field of `update_application_from_email`).
+- **The agent keeps going after errors**: a failed job is recorded and skipped; when an attempt ends early (crash,
+  lost browser, search short of its goal) a fresh attempt continues the run with what was already done, until the
+  applications are in, the Claude credits / usage limit or the budget run out, the agent calls the new `end_run` tool,
+  or 3 attempts in a row add nothing. Settings → Agent → "Keep going after errors" and attempts per run (default 8).
 - **Check email replies**: new agent task (Agent page, or "📬 Check email replies" on Applications) that reads
   companies' answers in your inbox and moves the cards: Awaiting scheduling, Interview, Offer, Rejected, or adds
   applications made outside the app from their confirmation emails. Reads Gmail through the claude.ai Gmail

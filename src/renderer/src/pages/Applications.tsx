@@ -1,5 +1,6 @@
 import { useEffect, useState, type DragEvent } from 'react'
-import { APPLICATION_STATUSES, type Application, type ApplicationStatus, type Job } from '@shared/types'
+import { APPLICATION_STATUSES, type Application, type ApplicationListItem, type ApplicationStatus } from '@shared/types'
+import { emailUrl } from '@shared/email'
 import { api, useAction, useLoad } from '../hooks'
 
 const COLUMNS = APPLICATION_STATUSES.map((s) => ({ status: s.id, label: s.label }))
@@ -11,7 +12,10 @@ const nextStep = (a: Application): string | null => {
   return lines.length ? lines[lines.length - 1].replace(/^.* Next: /, '').replace(/ \[→ [^\]]*\]$/, '') : null
 }
 
-type AppItem = Application & { job: Pick<Job, 'id' | 'title' | 'company' | 'url'> }
+type AppItem = ApplicationListItem
+
+/** Same colors as the fit score on the Jobs page */
+const scoreColor = (s: number) => (s >= 75 ? 'bg-emerald-600' : s >= 50 ? 'bg-amber-500' : 'bg-zinc-400')
 type DropTarget = ApplicationStatus | 'archive' | null
 
 const MIME = 'application/x-job-search-app'
@@ -26,6 +30,7 @@ export default function Applications({ onOpen, onJob, onAgent }: { onOpen: (jobI
   const [filter, setFilter] = useState('')
   const [settings] = useLoad(() => api.settings.get(), [])
   const [days, setDays] = useState(14)
+  const emailLink = (a: AppItem) => emailUrl(a.notes, settings?.agent.emailSource ?? 'gmail-connector', settings?.agent.webmailUrl ?? '')
 
   // Local copy for optimistic moves; replaced whenever the server list changes
   useEffect(() => setApps(loaded), [loaded])
@@ -105,7 +110,23 @@ export default function Applications({ onOpen, onJob, onAgent }: { onOpen: (jobI
           📬 {nextStep(a)}
         </div>
       )}
+      {a.status === 'scheduling' && emailLink(a) && (
+        <a
+          className="btn-sec mt-2 w-full justify-center py-1 text-xs"
+          href={emailLink(a)!}
+          target="_blank"
+          rel="noreferrer"
+          title="Opens the company's email in your browser, to pick a slot or answer"
+        >
+          ✉️ Open email
+        </a>
+      )}
       <div className="mt-2 flex flex-wrap items-center gap-1 text-xs text-zinc-500">
+        {a.job.score != null && (
+          <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-white tabular-nums ${scoreColor(a.job.score)}`} title={`Fit score: ${a.job.score}%`}>
+            {a.job.score}% fit
+          </span>
+        )}
         <button className="underline-offset-2 hover:text-indigo-600 hover:underline" onClick={() => onJob(a.jobId)}>
           Details
         </button>

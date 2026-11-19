@@ -25,7 +25,7 @@ The task gives the time window (N days).
 
 Read the search results first (sender, subject, snippet). Open the full message with get_thread or get_message only when the snippet doesn't say enough to classify it.
 
-**Webmail in the browser.** Open the webmail address from the task. If it shows a login page, `ask_user` with kind `action` ("Please sign in to your email in the agent's browser window, then click Done."). Use the mailbox's search box with the same kinds of terms (company names, "application", "candidatura", "interview", "entrevista"), and stay inside the window. Open a message only to read it. Use sender + date + subject as the email id.
+**Webmail in the browser.** Open the webmail address from the task. If it shows a login page, `ask_user` with kind `action` ("Please sign in to your email in the agent's browser window, then click Done."). Use the mailbox's search box with the same kinds of terms (company names, "application", "candidatura", "interview", "entrevista"), and stay inside the window. Open a message only to read it. Use sender + date + subject as the email id, and pass the address of the open message (from the address bar) as email_url so the candidate can open it from the board.
 
 Ignore job alerts and newsletters ("new jobs for you", "vagas recomendadas"), LinkedIn notifications that are not a message from a person, marketing, and emails the candidate sent.
 
@@ -46,7 +46,7 @@ A new round after an interview ("we'd like to schedule the technical interview")
 
 - Match by company (sender domain, signature, the ATS's company name) and then by role title. Recruiters from a staffing agency write on behalf of a client: match on the role and the client name if they give it.
 - Skip emails whose id is already in emails_seen.
-- Call `update_application_from_email` once per email that matters, with job_id, the email id, from, subject, date, the status, a one or two sentence `summary`, and next_step with what the candidate must do, including any link, deadline, date and time zone.
+- Call `update_application_from_email` once per email that matters, with job_id, the email id (for Gmail, the message id the tool returned), from, subject, date, the status, a one or two sentence `summary`, and next_step with what the candidate must do, including any link, deadline, date and time zone.
 - If the company has several applications on the board and the email doesn't say which role, pick the one with the latest activity, and say in the summary that the role was not named.
 - An application the candidate made outside the app (no match on the board): call it with `company` and `title` (as written in the email) and no job_id. If the tool answers with jobs_at_company, decide whether it is one of those and call again.
 - Only one thread about the same application: use its latest message to decide the status, and record it once.

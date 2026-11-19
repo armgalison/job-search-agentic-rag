@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { createInterface } from 'node:readline'
-import type { AgentRunInfo, AgentTask } from '@shared/types'
+import type { AgentRunInfo, AgentTask, Job } from '@shared/types'
 import { cliOptions } from '../ai'
 import { cleanEnv } from '../ai/claudeCli'
 import { effectivePrices } from '../ai/pricing'
@@ -11,10 +11,11 @@ import { getSettings } from '../settings'
 import { budgetBlock, recordUsage } from '../usage'
 import { ensureMcpServer } from './mcpServer'
 import { agentWorkspace, browserProfileDir, playwrightMcpCli, pluginDir } from './paths'
-import { taskPrompt } from './prompt'
+import { taskPrompt, type Continuation } from './prompt'
+import { afterAttempt, applicationTarget } from './retry'
 import { describeBlacklist } from './blacklist'
 import { agentArgs, mcpConfig } from './args'
-import { addEvent, beginRun, currentRun, endRun } from './session'
+import { addEvent, beginRun, currentRun, endRun, granted, patchRun, runFlags } from './session'
 import { StreamParser } from './stream'
 
 /**
@@ -30,11 +31,14 @@ import { StreamParser } from './stream'
 
 let child: ChildProcess | null = null
 let stopping = false
+/** Pending relaunch between two attempts */
+let retryTimer: NodeJS.Timeout | null = null
+/** Pause before a new attempt (lets the old browser and MCP servers exit) */
+const RETRY_DELAY_MS = 15_000
 
 export async function startAgent(task: AgentTask): Promise<AgentRunInfo> {
-  if (child && currentRun()?.status === 'running') throw new Error('An agent run is already in progress. Stop it first.')
+  if ((child || retryTimer) && currentRun()?.status === 'running') throw new Error('An agent run is already in progress. Stop it first.')
   const settings = getSettings()
-  const s = settings.agent
   const blocked = budgetBlock(settings.budget, 'subscription')
   if (blocked) throw new Error(blocked)
 
@@ -43,22 +47,59 @@ export async function startAgent(task: AgentTask): Promise<AgentRunInfo> {
     job = jobsRepo.get(task.jobId)
     if (!job) throw new Error('Job not found.')
   }
-  const prompt = taskPrompt(task, s, { today: new Date().toISOString().slice(0, 10), job, blacklist: describeBlacklist(blacklistRepo.list()) })
-
+  // Validates the task before anything starts (throws a readable error)
+  taskPrompt(task, settings.agent, { today: today(), job, blacklist: '' })
   const plugin = pluginDir()
   if (!existsSync(plugin)) throw new Error(`Agent skills not found at ${plugin}.`)
+
+  beginRun(task)
+  stopping = false
+  const maxAttempts = settings.agent.autoContinue ? Math.max(1, settings.agent.maxAttempts) : 1
+  patchRun({ attempt: 1, maxAttempts })
+  try {
+    await launchAttempt(task, job, { attempt: 1, idle: 0, totalCost: null, appliedBefore: 0 })
+  } catch (err) {
+    endRun('failed', (err as Error).message, null)
+    throw err
+  }
+  return currentRun()!
+}
+
+const today = () => new Date().toISOString().slice(0, 10)
+
+interface AttemptState {
+  attempt: number
+  /** Attempts in a row before this one that added no application */
+  idle: number
+  totalCost: number | null
+  /** Applications granted before this attempt */
+  appliedBefore: number
+  continuation?: Continuation
+}
+
+async function launchAttempt(task: AgentTask, job: Job | null, st: AttemptState): Promise<void> {
+  const settings = getSettings()
+  const s = settings.agent
+  const prompt = taskPrompt(task, s, { today: today(), job, blacklist: describeBlacklist(blacklistRepo.list()), continuation: st.continuation })
   const workspace = agentWorkspace()
   mkdirSync(workspace, { recursive: true })
   mkdirSync(browserProfileDir(), { recursive: true })
   const endpoint = await ensureMcpServer()
   const cfg = mcpConfig(s, endpoint, { node: process.execPath, cli: s.browser === 'claude-in-chrome' ? '' : playwrightMcpCli(), profileDir: browserProfileDir(), outputDir: workspace })
-  const args = agentArgs(s, plugin, JSON.stringify(cfg), task)
+  const args = agentArgs(s, pluginDir(), JSON.stringify(cfg), task)
   const { cliPath } = cliOptions()
+  const runId = currentRun()?.runId
 
-  const run = beginRun(task)
-  stopping = false
-  addEvent({ kind: 'status', text: `Starting the agent (${s.model}, ${s.browser === 'claude-in-chrome' ? 'Claude in Chrome' : `Playwright + ${s.browser === 'msedge' ? 'Edge' : 'Chrome'}`})…`, detail: prompt })
-  logger.info('agent', `Run ${run.runId} started`, { task, model: s.model, browser: s.browser })
+  patchRun({ attempt: st.attempt })
+  addEvent({
+    kind: 'status',
+    text:
+      st.attempt === 1
+        ? `Starting the agent (${s.model}, ${s.browser === 'claude-in-chrome' ? 'Claude in Chrome' : `Playwright + ${s.browser === 'msedge' ? 'Edge' : 'Chrome'}`})…`
+        : `Attempt ${st.attempt} of ${currentRun()?.maxAttempts ?? s.maxAttempts}: continuing the run…`,
+    detail: prompt
+  })
+  logger.info('agent', `Run ${runId} attempt ${st.attempt} started`, { task, model: s.model, browser: s.browser })
 
   const proc = spawn(cliPath, args, {
     cwd: workspace,
@@ -69,6 +110,7 @@ export async function startAgent(task: AgentTask): Promise<AgentRunInfo> {
   child = proc
   const parser = new StreamParser()
   let stderr = ''
+  let spawnFailed = false
 
   createInterface({ input: proc.stdout! }).on('line', (line) => {
     for (const ev of parser.parseLine(line)) addEvent(ev)
@@ -78,6 +120,7 @@ export async function startAgent(task: AgentTask): Promise<AgentRunInfo> {
     if (stderr.length > 20_000) stderr = stderr.slice(-20_000)
   })
   proc.on('error', (err: NodeJS.ErrnoException) => {
+    spawnFailed = true
     addEvent({
       kind: 'error',
       isError: true,
@@ -104,15 +147,68 @@ export async function startAgent(task: AgentTask): Promise<AgentRunInfo> {
     } else if (!stopping) {
       addEvent({ kind: 'error', isError: true, text: `Claude Code exited (code ${code}) without a result.`, detail: stderr.trim().slice(-4000) || undefined })
     }
-    const status = stopping ? 'stopped' : r && !r.isError ? 'done' : 'failed'
-    endRun(status, r?.text ?? (stopping ? 'Stopped by the candidate.' : stderr.trim().split('\n').pop() ?? ''), r?.costUsd ?? null)
-    logger.info('agent', `Run ${run.runId} ${status}`)
+    const totalCost = r?.costUsd != null ? (st.totalCost ?? 0) + r.costUsd : st.totalCost
+    patchRun({ costUsd: totalCost })
+    const applied = granted.application
+    const idle = applied > st.appliedBefore ? 0 : st.idle + 1
+    const output = `${r?.text ?? ''}\n${stderr.trim().slice(-2000)}`
+    const decision = afterAttempt({
+      task,
+      settings: { ...getSettings().agent, maxAttempts: currentRun()?.maxAttempts ?? 1 },
+      attempt: st.attempt,
+      stopped: stopping,
+      // A missing CLI will not appear by retrying
+      isError: !r || r.isError,
+      output,
+      applied,
+      idleAttempts: idle,
+      budgetBlocked: budgetBlock(getSettings().budget, 'subscription'),
+      agentEnded: spawnFailed ? 'Claude Code could not start.' : runFlags.ended
+    })
+    logger.info('agent', `Run ${runId} attempt ${st.attempt} ended: ${decision.retry ? `retrying (${decision.reason})` : decision.reason}`)
+
+    if (!decision.retry) {
+      const summary = r?.text?.trim() || (stopping ? 'Stopped by the candidate.' : stderr.trim().split('\n').pop() ?? '')
+      const note = decision.reason === 'Finished.' || decision.status === 'stopped' ? '' : `\n\n${decision.reason}${st.attempt > 1 ? ` (${st.attempt} attempts)` : ''}`
+      endRun(decision.status, `${summary}${note}`.trim(), totalCost)
+      return
+    }
+    addEvent({ kind: 'status', text: `The attempt ended early (${decision.reason}). Continuing in ${RETRY_DELAY_MS / 1000}s with a fresh attempt…` })
+    retryTimer = setTimeout(() => {
+      retryTimer = null
+      if (stopping || currentRun()?.runId !== runId) return
+      const next = st.attempt + 1
+      launchAttempt(task, job, {
+        attempt: next,
+        idle,
+        totalCost,
+        appliedBefore: applied,
+        continuation: {
+          attempt: next,
+          maxAttempts: currentRun()?.maxAttempts ?? next,
+          applied,
+          target: applicationTarget(task, getSettings().agent),
+          reason: decision.reason,
+          lastOutput: output
+        }
+      }).catch((err: Error) => {
+        addEvent({ kind: 'error', isError: true, text: `Could not continue the run: ${err.message}` })
+        endRun('failed', err.message, totalCost)
+      })
+    }, RETRY_DELAY_MS)
   })
   proc.stdin!.end(prompt)
-  return currentRun()!
 }
 
 export function stopAgent(): void {
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+    stopping = true
+    addEvent({ kind: 'status', text: 'Stopped before the next attempt.' })
+    endRun('stopped', 'Stopped by the candidate.', currentRun()?.costUsd ?? null)
+    return
+  }
   if (!child) return
   stopping = true
   addEvent({ kind: 'status', text: 'Stopping…' })
