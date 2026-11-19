@@ -3,7 +3,7 @@ import type { LogEntry, LogLevel, LogSource } from '@shared/types'
 import { api, useAction, useToast } from '../hooks'
 
 const LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error']
-const SOURCES: LogSource[] = ['app', 'linkedin', 'ai', 'cli', 'embeddings', 'import', 'ipc', 'docs']
+const SOURCES: LogSource[] = ['app', 'linkedin', 'ai', 'cli', 'embeddings', 'import', 'ipc', 'docs', 'agent']
 const LEVEL_STYLE: Record<LogLevel, string> = {
   debug: 'text-zinc-500',
   info: 'text-zinc-800 dark:text-zinc-200',

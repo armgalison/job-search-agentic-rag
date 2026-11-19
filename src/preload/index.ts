@@ -16,12 +16,15 @@ const groups = {
     'previewCoverLetterHtml',
     'learnFromEdits'
   ],
-  applications: ['list', 'getByJob', 'setStatus'],
+  applications: ['list', 'getByJob', 'setStatus', 'setArchived'],
+  blacklist: ['list', 'add', 'delete'],
   qa: ['list', 'save', 'delete'],
   linkedin: ['open', 'search', 'openJob', 'openJobExternal'],
-  settings: ['get', 'save', 'update', 'setKey', 'testChat', 'cliStatus', 'resetAll'],
+  settings: ['get', 'save', 'update', 'setKey', 'testChat', 'cliStatus', 'resetAll', 'exportData', 'importData'],
   usage: ['summary', 'recent', 'clear'],
-  logs: ['list', 'clear', 'filePath']
+  logs: ['list', 'clear', 'filePath'],
+  agent: ['start', 'stop', 'state', 'answer', 'checkBrowser'],
+  outreach: ['list', 'delete']
 } as const
 
 const api: Record<string, unknown> = {}

@@ -4,6 +4,7 @@ import { retrieve } from '../rag'
 import type { FieldAnswer, FormField } from '@shared/types'
 import { factsBlock, profileSkeleton } from './context'
 import { FieldAnswersSchema } from './schemas'
+import { WRITING_RULES } from '@shared/writingCheck'
 
 /**
  * Suggests answers for Easy Apply fields.
@@ -37,7 +38,8 @@ export async function answerFields(jobId: number | null, fields: FormField[]): P
         'You fill in job application forms on behalf of the candidate, using ONLY the profile and facts provided. ' +
         'For numeric "years of experience" questions, add up the documented periods and answer with a whole number only. ' +
         'For select/radio, answer with the exact text of one of the options. Answer free-text fields in the language of the question. ' +
-        'If the information is not available (e.g. salary expectations, availability or work authorization not provided), set known=false and leave value empty. Never guess.',
+        'If the information is not available (e.g. salary expectations, availability or work authorization not provided), set known=false and leave value empty. Never guess.\n' +
+        `For free-text answers:\n${WRITING_RULES}`,
       prompt:
         `${job ? `Job: ${job.title} — ${job.company}\n\n` : ''}PROFILE:\n${profileSkeleton()}\n\nFACTS:\n${factsBlock(facts)}\n\n` +
         `FIELDS:\n${JSON.stringify(pending.map(({ key, label, type, options, required }) => ({ key, label, type, options, required })), null, 1)}`

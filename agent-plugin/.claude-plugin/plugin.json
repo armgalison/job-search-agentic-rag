@@ -1,0 +1,5 @@
+{
+  "name": "job-agent",
+  "version": "0.2.0",
+  "description": "Skills used by Job Search RAG's background agent: job search, tailored resume and cover letter, Easy Apply and external applications, finding job contacts and writing/sending outreach messages, and writing that avoids the signs of AI-generated text."
+}

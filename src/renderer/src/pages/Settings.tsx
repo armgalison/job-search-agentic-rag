@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ChatProviderId, CliStatus, EmbedProviderId, Settings } from '@shared/types'
+import type { AgentBrowser, AgentSettings, ChatProviderId, CliStatus, EmailSource, EmbedProviderId, Settings } from '@shared/types'
 import { api, useAction, useLoad, useToast } from '../hooks'
 
 const CHAT: Record<ChatProviderId, string> = {
@@ -143,6 +143,8 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      <AgentSection value={s.agent} onChange={(agent, immediate) => change({ agent: { ...s.agent, ...agent } }, immediate)} />
+
       <section className="card mb-5">
         <h2 className="h2">Other</h2>
         <div className="grid grid-cols-1 gap-3">
@@ -159,6 +161,8 @@ export default function SettingsPage() {
           </label>
         </div>
       </section>
+
+      <BackupSection />
 
       <DangerZone />
     </div>
@@ -198,6 +202,67 @@ function KeyField({ provider, saved, onChanged }: { provider: 'claude' | 'openai
         )}
       </div>
     </div>
+  )
+}
+
+function BackupSection() {
+  const [busy, run] = useAction()
+  const toast = useToast()
+  const [confirming, setConfirming] = useState(false)
+
+  const exportAll = async () => {
+    const path = await run(() => api.settings.exportData())
+    if (path) toast(`Backup saved to ${path}`)
+  }
+  const importAll = async () => {
+    const counts = await run(() => api.settings.importData())
+    if (!counts) return
+    const total = Object.values(counts).reduce((a, b) => a + b, 0)
+    toast(`Imported ${total} records. Rebuilding the search index…`)
+    // Every screen reloads from the imported data
+    setTimeout(() => location.reload(), 1200)
+  }
+
+  return (
+    <section className="card mb-5">
+      <h2 className="h2">Backup</h2>
+      <p className="mb-3 text-sm text-zinc-500">
+        Export everything (profile, knowledge base, jobs, applications and documents, saved answers, blacklist, outreach, usage history and settings) to one JSON
+        file, or import a file to move to another computer. API keys are not exported: they are encrypted for this computer, so enter them again after importing on
+        another machine.
+      </p>
+      {!confirming ? (
+        <div className="flex flex-wrap gap-2">
+          <button className="btn" disabled={busy} onClick={exportAll}>
+            ⬇ Export all data…
+          </button>
+          <button className="btn-sec" disabled={busy} onClick={() => setConfirming(true)}>
+            ⬆ Import from backup…
+          </button>
+        </div>
+      ) : (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+          <p className="mb-2">
+            Importing <b>replaces all current data</b> with the backup's. Export first if you want to keep what is here. API keys stored on this computer are kept.
+          </p>
+          <div className="flex gap-2">
+            <button
+              className="btn"
+              disabled={busy}
+              onClick={async () => {
+                await importAll()
+                setConfirming(false)
+              }}
+            >
+              {busy ? 'Importing…' : 'Choose file and replace'}
+            </button>
+            <button className="btn-sec" disabled={busy} onClick={() => setConfirming(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -313,5 +378,109 @@ function CliPanel({ path, onPath, beforeCheck }: { path: string; onPath: (p: str
         </div>
       )}
     </div>
+  )
+}
+
+const BROWSERS: Record<AgentBrowser, string> = {
+  chrome: 'Playwright + Google Chrome (own profile, recommended)',
+  msedge: 'Playwright + Microsoft Edge (own profile)',
+  'claude-in-chrome': 'Claude in Chrome extension (your everyday Chrome)'
+}
+
+function AgentSection({ value: a, onChange }: { value: AgentSettings; onChange: (patch: Partial<AgentSettings>, immediate?: boolean) => void }) {
+  const [check, setCheck] = useState<{ ok: boolean; detail: string } | null>(null)
+  const [busy, run] = useAction()
+  const num = (k: 'maxApplicationsPerRun' | 'maxMessagesPerRun' | 'minScore', v: string) => onChange({ [k]: Math.max(0, Math.min(k === 'minScore' ? 100 : 100, Number(v) || 0)) })
+  return (
+    <section className="card mb-5">
+      <h2 className="h2">Agent (automatic applications and outreach)</h2>
+      <p className="mb-3 text-sm text-zinc-500">
+        The agent runs Claude Code in the background (your Claude subscription) and drives a visible browser. It searches, applies, writes cover letters and
+        messages recruiters, and only asks you about things it can't find in your knowledge base.
+      </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className="sm:col-span-2">
+          <span className="label">Browser</span>
+          <select className="input" value={a.browser} onChange={(e) => onChange({ browser: e.target.value as AgentBrowser }, true)}>
+            {Object.entries(BROWSERS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="label">Model</span>
+          <input className="input" value={a.model} onChange={(e) => onChange({ model: e.target.value })} placeholder="claude-sonnet-5-5" />
+        </label>
+        <label>
+          <span className="label">Minimum fit score to apply (%)</span>
+          <input className="input" type="number" min={0} max={100} value={a.minScore} onChange={(e) => num('minScore', e.target.value)} />
+        </label>
+        <label>
+          <span className="label">Max applications per run</span>
+          <input className="input" type="number" min={0} value={a.maxApplicationsPerRun} onChange={(e) => num('maxApplicationsPerRun', e.target.value)} />
+        </label>
+        <label>
+          <span className="label">Max messages per run</span>
+          <input className="input" type="number" min={0} value={a.maxMessagesPerRun} onChange={(e) => num('maxMessagesPerRun', e.target.value)} />
+        </label>
+      </div>
+      <div className="mt-3 flex flex-col gap-2 text-sm">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={a.outreach} onChange={(e) => onChange({ outreach: e.target.checked }, true)} /> After applying, find the recruiter / hiring
+          manager and message them
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={a.alwaysCoverLetter} onChange={(e) => onChange({ alwaysCoverLetter: e.target.checked }, true)} /> Always write a cover letter
+          (not only when the form has a field for it)
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={a.confirmBeforeSubmit} onChange={(e) => onChange({ confirmBeforeSubmit: e.target.checked }, true)} /> Ask me before each final
+          Submit / Send (off = fully automatic)
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={a.dryRun} onChange={(e) => onChange({ dryRun: e.target.checked }, true)} /> Dry run: fill everything but never submit or send
+        </label>
+      </div>
+      <label className="mt-3 block">
+        <span className="label">Standing instructions for every run (optional)</span>
+        <textarea
+          className="input min-h-16"
+          value={a.instructions}
+          onChange={(e) => onChange({ instructions: e.target.value })}
+          placeholder="e.g. Only remote roles. Never apply to staffing agencies. Message recruiters in Portuguese when the company is Brazilian."
+        />
+      </label>
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label>
+          <span className="label">Inbox for “Check email replies”</span>
+          <select className="input" value={a.emailSource} onChange={(e) => onChange({ emailSource: e.target.value as EmailSource }, true)}>
+            <option value="gmail-connector">Gmail (claude.ai connector, read-only)</option>
+            <option value="webmail">Webmail in the agent's browser (Outlook / Hotmail, Gmail…)</option>
+          </select>
+        </label>
+        {a.emailSource === 'webmail' ? (
+          <label>
+            <span className="label">Webmail address</span>
+            <input className="input" value={a.webmailUrl} onChange={(e) => onChange({ webmailUrl: e.target.value })} placeholder="https://outlook.live.com/mail/" />
+          </label>
+        ) : (
+          <p className="self-end text-xs text-zinc-500">
+            Connect Gmail once at claude.ai → Settings → Connectors, with the same account Claude Code is logged in with. The agent may only search and read.
+          </p>
+        )}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button className="btn-sec" disabled={busy} onClick={() => run(async () => setCheck(await api.agent.checkBrowser()))}>
+          Check browser
+        </button>
+        {check && <span className={`text-sm ${check.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>{check.detail}</span>}
+      </div>
+      <p className="mt-3 text-xs text-zinc-500">
+        On the first run the agent's browser opens LinkedIn signed out: log in there once when the agent asks (the session is kept). Automating LinkedIn goes against
+        its User Agreement and can get the account restricted; keep the per-run limits low.
+      </p>
+    </section>
   )
 }

@@ -1,4 +1,5 @@
-import { writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { BrowserWindow, dialog } from 'electron'
 import { applicationsRepo, jobsRepo, profileRepo } from '../db/repos'
 import type { CoverLetterDoc, Lang, ResumeDoc } from '@shared/types'
@@ -62,4 +63,34 @@ export async function exportCoverLetter(win: BrowserWindow | null, appId: number
   const header = letterHeader(a.jobId, a.coverLetter.lang ?? 'en')
   const data = format === 'pdf' ? await htmlToPdf(coverLetterHtml(a.coverLetter, header)) : await coverLetterDocx(a.coverLetter, header)
   return saveAs(win, resumeFileName(a.jobId, format).replace(/\.(pdf|docx)$/, `-cover-letter.${format}`), data)
+}
+
+/**
+ * Writes the job's resume or cover letter as PDF + DOCX into `dir` (so the agent's browser can upload them)
+ * and returns the absolute paths. File names follow resumeFileName (Candidate-Name-Company.pdf).
+ */
+export async function writeApplicationFiles(jobId: number, dir: string, which: 'resume' | 'cover-letter'): Promise<{ pdf: string; docx: string }> {
+  const a = applicationsRepo.getByJob(jobId)
+  await mkdir(dir, { recursive: true })
+  if (which === 'resume') {
+    if (!a?.resume) throw new Error('No resume for this job yet.')
+    const pdf = join(dir, resumeFileName(jobId, 'pdf'))
+    const docx = join(dir, resumeFileName(jobId, 'docx'))
+    await writeFile(pdf, await htmlToPdf(resumeHtml(a.resume)))
+    await writeFile(docx, await resumeDocx(a.resume))
+    return { pdf, docx }
+  }
+  if (!a?.coverLetter) throw new Error('No cover letter for this job yet.')
+  const header = letterHeader(jobId, a.coverLetter.lang ?? 'en')
+  const base = resumeFileName(jobId, 'pdf').replace(/\.pdf$/, '-cover-letter')
+  const pdf = join(dir, `${base}.pdf`)
+  const docx = join(dir, `${base}.docx`)
+  await writeFile(pdf, await htmlToPdf(coverLetterHtml(a.coverLetter, header)))
+  await writeFile(docx, await coverLetterDocx(a.coverLetter, header))
+  return { pdf, docx }
+}
+
+/** Plain-text version of a cover letter, for pasting into a form's text area. */
+export function coverLetterText(c: CoverLetterDoc): string {
+  return [c.greeting, ...c.paragraphs, c.closing, c.signature].filter((s) => s?.trim()).join('\n\n')
 }

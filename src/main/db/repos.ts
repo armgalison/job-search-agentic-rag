@@ -1,4 +1,6 @@
 import { getDb } from './client'
+import { normalizeBlacklistValue } from '../agent/blacklist'
+import { normalizeJobUrl, normalizeProfileUrl } from '../agent/history'
 import {
   emptyProfile,
   type Application,
@@ -10,9 +12,15 @@ import {
   type ItemKind,
   type Job,
   type JobStatus,
+  type Outreach,
+  type OutreachChannel,
+  type OutreachStatus,
   type Profile,
   type ProfileItem,
-  type QaEntry
+  type QaEntry,
+  type BlacklistEntry,
+  type BlacklistInput,
+  type BlacklistKind
 } from '@shared/types'
 
 const parse = <T>(s: string | null): T | null => (s ? (JSON.parse(s) as T) : null)
@@ -197,10 +205,18 @@ export const jobsRepo = {
     const r = getDb().prepare('SELECT * FROM jobs WHERE linkedin_id = ?').get(lid) as JobRow | undefined
     return r ? toJob(r) : null
   },
-  /** Insert or update (by LinkedIn ID). Never downgrades the status of already-analyzed jobs. */
+  /** Job saved under the same URL (ignoring query string, hash, trailing slash and http/https). */
+  byUrl(url: string): Job | null {
+    const key = normalizeJobUrl(url)
+    if (!key) return null
+    const rows = getDb().prepare('SELECT * FROM jobs WHERE linkedin_id IS NULL').all() as JobRow[]
+    const r = rows.find((row) => normalizeJobUrl(row.url) === key)
+    return r ? toJob(r) : null
+  },
+  /** Insert or update (by LinkedIn ID, or by URL for other sites). Never downgrades the status of already-analyzed jobs. */
   upsertCaptured(c: CapturedJob, status: JobStatus = 'captured'): Job {
     const db = getDb()
-    const existing = c.linkedinId ? jobsRepo.byLinkedinId(c.linkedinId) : null
+    const existing = c.linkedinId ? jobsRepo.byLinkedinId(c.linkedinId) : jobsRepo.byUrl(c.url)
     if (existing) {
       const descriptionChanged = !!c.description && c.description !== existing.description
       db.prepare(
@@ -245,6 +261,7 @@ type AppRow = {
   notes: string
   applied_at: string | null
   updated_at: string
+  archived_at: string | null
 }
 const toApp = (r: AppRow): Application => ({
   id: r.id,
@@ -254,7 +271,8 @@ const toApp = (r: AppRow): Application => ({
   status: r.status,
   notes: r.notes,
   appliedAt: r.applied_at,
-  updatedAt: r.updated_at
+  updatedAt: r.updated_at,
+  archivedAt: r.archived_at ?? null
 })
 
 export const applicationsRepo = {
@@ -291,6 +309,11 @@ export const applicationsRepo = {
          applied_at = CASE WHEN ? = 'applied' AND applied_at IS NULL THEN datetime('now') ELSE applied_at END WHERE id = ?`
       )
       .run(status, status, id)
+  },
+  setArchived(id: number, archived: boolean): void {
+    getDb()
+      .prepare(`UPDATE applications SET archived_at = ${archived ? "datetime('now')" : 'NULL'}, updated_at = datetime('now') WHERE id = ?`)
+      .run(id)
   }
 }
 
@@ -329,5 +352,105 @@ export const qaRepo = {
   },
   delete(id: number): void {
     getDb().prepare('DELETE FROM qa_memory WHERE id = ?').run(id)
+  }
+}
+
+// ---------- outreach (messages sent to recruiters / hiring managers) ----------
+type OutreachRow = {
+  id: number
+  job_id: number | null
+  name: string
+  profile_url: string
+  role: string
+  channel: OutreachChannel
+  message: string
+  status: OutreachStatus
+  notes: string
+  created_at: string
+  j_title?: string | null
+  j_company?: string | null
+}
+
+/** LinkedIn profile URLs compare by their /in/<slug> part (query strings, trailing slashes and host vary). */
+export { normalizeProfileUrl }
+
+const toOutreach = (r: OutreachRow): Outreach => ({
+  id: r.id,
+  jobId: r.job_id,
+  name: r.name,
+  profileUrl: r.profile_url,
+  role: r.role,
+  channel: r.channel,
+  message: r.message,
+  status: r.status,
+  notes: r.notes,
+  createdAt: r.created_at,
+  job: r.job_id && r.j_title != null ? { id: r.job_id, title: r.j_title ?? '', company: r.j_company ?? '' } : null
+})
+
+export const outreachRepo = {
+  list(filter: { jobId?: number; profileUrl?: string } = {}): Outreach[] {
+    const where: string[] = []
+    const args: unknown[] = []
+    if (filter.jobId) {
+      where.push('o.job_id = ?')
+      args.push(filter.jobId)
+    }
+    if (filter.profileUrl) {
+      where.push('o.profile_url = ?')
+      args.push(normalizeProfileUrl(filter.profileUrl))
+    }
+    const rows = getDb()
+      .prepare(
+        `SELECT o.*, j.title AS j_title, j.company AS j_company FROM outreach o LEFT JOIN jobs j ON j.id = o.job_id
+         ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY o.id DESC`
+      )
+      .all(...args) as OutreachRow[]
+    return rows.map(toOutreach)
+  },
+  add(o: Omit<Outreach, 'id' | 'createdAt' | 'job'>): Outreach {
+    const info = getDb()
+      .prepare('INSERT INTO outreach(job_id, name, profile_url, role, channel, message, status, notes) VALUES(?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(o.jobId, o.name, normalizeProfileUrl(o.profileUrl), o.role, o.channel, o.message, o.status, o.notes)
+    return outreachRepo.list().find((x) => x.id === Number(info.lastInsertRowid))!
+  },
+  delete(id: number): void {
+    getDb().prepare('DELETE FROM outreach WHERE id = ?').run(id)
+  }
+}
+
+// ---------- blacklist ----------
+type BlacklistRow = { id: number; kind: BlacklistKind; value: string; label: string; reason: string; job_id: number | null; source: string; created_at: string }
+const toBlacklist = (r: BlacklistRow): BlacklistEntry => ({
+  id: r.id,
+  kind: r.kind,
+  value: r.value,
+  label: r.label,
+  reason: r.reason,
+  jobId: r.job_id,
+  source: r.source,
+  createdAt: r.created_at
+})
+
+export const blacklistRepo = {
+  list(): BlacklistEntry[] {
+    return (getDb().prepare('SELECT * FROM blacklist ORDER BY id DESC').all() as BlacklistRow[]).map(toBlacklist)
+  },
+  /** Adds (or updates the reason of) an entry. Same kind + normalized value = same entry. */
+  add(e: BlacklistInput, source: 'candidate' | 'agent' = 'candidate'): BlacklistEntry {
+    const label = e.label.trim()
+    const value = normalizeBlacklistValue(e.kind, label)
+    if (!value) throw new Error('Type a company, job URL, keyword or profile URL.')
+    getDb()
+      .prepare(
+        `INSERT INTO blacklist(kind, value, label, reason, job_id, source) VALUES(?, ?, ?, ?, ?, ?)
+         ON CONFLICT(kind, value) DO UPDATE SET reason = CASE WHEN excluded.reason != '' THEN excluded.reason ELSE blacklist.reason END,
+         job_id = COALESCE(excluded.job_id, blacklist.job_id)`
+      )
+      .run(e.kind, value, label, (e.reason ?? '').trim(), e.jobId ?? null, source)
+    return toBlacklist(getDb().prepare('SELECT * FROM blacklist WHERE kind = ? AND value = ?').get(e.kind, value) as BlacklistRow)
+  },
+  delete(id: number): void {
+    getDb().prepare('DELETE FROM blacklist WHERE id = ?').run(id)
   }
 }

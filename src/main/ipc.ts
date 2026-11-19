@@ -3,9 +3,13 @@ import { cliOptions, getChat } from './ai'
 import { cliStatus } from './ai/claudeCli'
 import { clearUsage, recentUsage, usageSummary } from './usage'
 import { clearLogs, listLogs, logFilePath, logger } from './log'
-import { applicationsRepo, factsRepo, jobsRepo, profileRepo, qaRepo } from './db/repos'
+import { applicationsRepo, blacklistRepo, factsRepo, jobsRepo, outreachRepo, profileRepo, qaRepo } from './db/repos'
+import { checkBrowser, startAgent, stopAgent } from './agent/runner'
+import { agentState, answer as answerAgent } from './agent/session'
 import * as docs from './docs'
 import { resetAllData } from './db/client'
+import { exportData, importData, parseBackup } from './db/backup'
+import { readFile, writeFile } from 'node:fs/promises'
 import { clearLinkedInSession, jobUrl, openLinkedIn, searchUrl } from './linkedin/window'
 import { indexPending, rebuildIndex, syncItemFacts } from './rag'
 import { analyzeJob, answerGap, generateCoverLetter, generateResume, learnFromEdits } from './services/generator'
@@ -135,6 +139,22 @@ export function registerIpc(getWin: () => BrowserWindow | null, emit: (e: AppEve
     const a = applicationsRepo.get(id)
     if (a && status === 'applied') jobsRepo.setStatus(a.jobId, 'applied')
   })
+  handle('applications.setArchived', (id: number, archived: boolean) => {
+    applicationsRepo.setArchived(id, !!archived)
+    emit({ type: 'applications-changed' })
+  })
+
+  // blacklist (the agent never applies to / contacts these)
+  handle('blacklist.list', () => blacklistRepo.list())
+  handle('blacklist.add', (e: never) => {
+    const entry = blacklistRepo.add(e)
+    emit({ type: 'blacklist-changed' })
+    return entry
+  })
+  handle('blacklist.delete', (id: number) => {
+    blacklistRepo.delete(id)
+    emit({ type: 'blacklist-changed' })
+  })
 
   // question memory
   handle('qa.list', () => qaRepo.list())
@@ -156,6 +176,18 @@ export function registerIpc(getWin: () => BrowserWindow | null, emit: (e: AppEve
     const url = j.linkedinId ? jobUrl(j.linkedinId) : j.url
     if (!/^https?:\/\//i.test(url ?? '')) throw new Error('This job has no web address')
     await shell.openExternal(url)
+  })
+
+  // background agent
+  handle('agent.start', (task: never) => startAgent(task))
+  handle('agent.stop', () => stopAgent())
+  handle('agent.state', () => agentState())
+  handle('agent.answer', (id: string, text: string) => answerAgent(String(id), String(text ?? '').slice(0, 5000)))
+  handle('agent.checkBrowser', () => checkBrowser())
+  handle('outreach.list', (jobId?: number) => outreachRepo.list(typeof jobId === 'number' ? { jobId } : {}))
+  handle('outreach.delete', (id: number) => {
+    outreachRepo.delete(id)
+    emit({ type: 'outreach-changed' })
   })
 
   // settings
@@ -183,6 +215,30 @@ export function registerIpc(getWin: () => BrowserWindow | null, emit: (e: AppEve
     if (confirmation !== 'RESET') throw new Error('Reset not confirmed.')
     resetAllData()
     await clearLinkedInSession()
+  })
+  // Backup: every table except embeddings (rebuilt after import) and the machine-bound API keys
+  handle('settings.exportData', async () => {
+    const win = getWin()
+    const opts = {
+      defaultPath: `job-search-backup-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: 'Job Search RAG backup', extensions: ['json'] }]
+    }
+    const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts)
+    if (res.canceled || !res.filePath) return null
+    await writeFile(res.filePath, JSON.stringify(exportData(), null, 1), 'utf8')
+    logger.info('app', `Data exported to ${res.filePath}`)
+    return res.filePath
+  })
+  handle('settings.importData', async () => {
+    const win = getWin()
+    const opts = { properties: ['openFile' as const], filters: [{ name: 'Job Search RAG backup', extensions: ['json'] }] }
+    const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+    if (res.canceled || !res.filePaths[0]) return null
+    const counts = importData(parseBackup(await readFile(res.filePaths[0], 'utf8')))
+    logger.info('app', `Data imported from ${res.filePaths[0]}`, counts)
+    for (const type of ['jobs-changed', 'applications-changed', 'facts-changed', 'blacklist-changed', 'outreach-changed', 'usage-changed'] as const) emit({ type })
+    rebuildIndex().catch((err) => emit({ type: 'toast', level: 'error', message: `Re-indexing after import failed: ${(err as Error).message}` }))
+    return counts
   })
   handle('settings.testChat', () =>
     getChat('test').complete({ system: 'Reply in one short sentence.', prompt: 'Say "connection OK" and the name of the model you are.', maxTokens: 200 })

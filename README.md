@@ -31,9 +31,46 @@ npm run build:win  # Windows build → dist/Job Search RAG-<version>-win-x64.zip
 5. In the app, answer the job's **gaps** (each answer becomes a new fact) and click **Generate resume + cover letter**.
 6. Review in the **Editor** and export to PDF/DOCX.
 7. In Easy Apply, click **Fill Easy Apply** on each step. Green = saved answer, blue = AI suggestion, orange = fill it in
-   yourself. The tailored resume is attached automatically. **You review and click Submit** — the app never submits.
+   yourself. The tailored resume is attached automatically. **You review and click Submit** — the panel never submits.
+   Or let the **Agent** do the whole thing (see below).
 8. **Usage** shows what every AI call cost and enforces your budget. **Console** shows what the app is doing (and why
    something failed); the LinkedIn panel has a mini console with *Copy log* too.
+
+## Agent (fully automatic mode)
+
+The **Agent** page runs Claude Code in the background (`claude -p` on your Claude subscription) and lets it drive a
+**visible browser**, so you can watch every step. One run can:
+
+1. search LinkedIn (or open a given job / company career page), save and score each job against your knowledge base;
+2. close important gaps by **asking you** — the only thing it asks about is knowledge it can't find about you (and
+   human-only steps: logging in, CAPTCHAs, verification codes). Every answer is saved to the knowledge base;
+3. tailor your resume to the job and export PDF/DOCX; write a cover letter when the form has a field for it (or always,
+   if you choose) and attach or paste it;
+4. apply through **Easy Apply** or the company's own site/ATS (Greenhouse, Lever, Ashby, Workday, Gupy…), filling every
+   question from saved answers and grounded facts;
+5. find the job poster / recruiter / hiring manager and **send them a short message** or connection note.
+
+Each step is a skill in the bundled Claude Code plugin [`agent-plugin/`](agent-plugin/skills): `job-agent`
+(orchestrator), `knowledge-grounding`, `find-jobs`, `tailor-documents`, `cover-letter`, `easy-apply`, `external-apply`,
+`find-contacts`, `outreach-message`, `send-linkedin-message` and `human-writing`. `human-writing` turns Wikipedia's
+[Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing) into writing rules; the agent runs
+every message, cover letter and free-text answer through the `check_writing` tool
+([`src/shared/writingCheck.ts`](src/shared/writingCheck.ts)), and the app's own resume/cover-letter/Easy Apply
+generation uses the same rules (cover letters get one automatic revision pass when the checker flags something).
+
+**How it is wired** (`src/main/agent/`): the app serves its own MCP server (`jobsearch`, Streamable HTTP on
+127.0.0.1 with a random token) with the knowledge base, document export, form-answer memory, outreach records,
+`ask_user` and `request_permission`. The browser is [Playwright MCP](https://github.com/microsoft/playwright-mcp) with
+your installed Chrome or Edge and its own persistent profile (log in to LinkedIn there once, when the agent asks), or
+the Claude in Chrome extension. The CLI runs isolated: only the plugin's skills, `--setting-sources ""`,
+`--strict-mcp-config`, built-in tools limited to Skill/TodoWrite (no shell, no file edits), `--permission-mode dontAsk`
+with an allowlist of the two MCP servers.
+
+**Controls** (Settings → Agent): browser, model, minimum fit score, max applications and messages per run, outreach
+on/off, always write a cover letter, **ask me before each final Submit/Send** (off by default = fully automatic) and
+**dry run** (fills everything, never submits). Every final Submit/Send click goes through `request_permission`, which
+enforces those limits. Questions show up on the Agent page with an OS notification. The Jobs page has
+**Let the agent apply** for a single job.
 
 ## Features
 
@@ -76,6 +113,7 @@ session) after you type `RESET`. Exported files and the downloaded embedding mod
 | RAG | `src/main/rag/` — profile → facts → embeddings → similarity search (one query per job requirement) |
 | Generation | `src/main/services/` — job analysis, fit score, resume, cover letter, gaps, resume import, Easy Apply answers |
 | Documents | `src/main/docs/` — HTML template → PDF (`printToPDF`) and DOCX (`docx`) |
+| Agent | `src/main/agent/` — runner (`claude -p` stream-json), app MCP server, questions/limits; skills in `agent-plugin/` |
 | LinkedIn | `src/main/linkedin/window.ts` + `src/preload/linkedin.ts` — persistent-session window and injected panel |
 | IPC | `src/main/ipc.ts`, `src/preload/index.ts`, typed API in `src/shared/types.ts` |
 | Logging | `src/main/log.ts` — in-memory + `<userData>/logs/app.log`, streamed to the Console page and the LinkedIn panel |
@@ -95,12 +133,16 @@ SQLite, onnxruntime) on every build. pdf.js is unpacked from the asar archive be
 ## Tests
 
 `npm test` runs the unit tests. A live check of the Claude CLI integration is opt-in (it makes two tiny calls on your
-subscription): `RUN_CLI_TEST=1 npx vitest run tests/claudeCli.live.test.ts`.
+subscription): `RUN_CLI_TEST=1 npx vitest run tests/claudeCli.live.test.ts`. An end-to-end agent run (real `claude -p`,
+skills, MCP server, Playwright + Chrome, against a local fake job page and form) is opt-in too, and uses noticeably
+more of your subscription: `RUN_AGENT_TEST=1 npx vitest run tests/agent.live.test.ts`.
 
 ## Notes
 
-- **LinkedIn Terms:** automating applications and scraping violates LinkedIn's User Agreement. The app is deliberately
-  semi-automatic (you navigate; it never clicks Submit or navigates on its own) to reduce that risk, but the risk is not zero.
+- **LinkedIn Terms:** automating applications, messages and scraping violates LinkedIn's User Agreement and can get the
+  account restricted. The LinkedIn panel is semi-automatic (you navigate and click Submit). The Agent is fully automatic
+  when you allow it: keep the per-run limits low, and turn on "ask me before each Submit/Send" if you want a final say.
+  The agent stops when LinkedIn shows a limit or security warning, and never bypasses CAPTCHAs.
 - **LinkedIn selectors change** often. If capturing or filling stops working, adjust the selectors in
   `src/preload/linkedin.ts` (it matches both the English and Portuguese LinkedIn UI).
 

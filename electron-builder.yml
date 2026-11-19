@@ -28,6 +28,14 @@ asarUnpack:
   - "node_modules/@img/**"
   # pdf.js is an ES module loaded by file URL (see src/main/services/importResume.ts)
   - "node_modules/pdfjs-dist/**"
+  # Playwright MCP runs as its own Node process for the agent (src/main/agent/paths.ts)
+  - "node_modules/@playwright/mcp/**"
+  - "node_modules/playwright/**"
+  - "node_modules/playwright-core/**"
+# Claude Code plugin with the agent's skills (src/main/agent/paths.ts → process.resourcesPath/agent-plugin)
+extraResources:
+  - from: agent-plugin
+    to: agent-plugin
 # Native modules ship N-API prebuilds for every platform; never try to compile them for Windows from Linux
 # Ensures and verifies the target platform's native binaries (sharp, SQLite, onnxruntime) — see scripts/before-pack.cjs
 beforePack: scripts/before-pack.cjs

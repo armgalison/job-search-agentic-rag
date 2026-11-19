@@ -12,7 +12,20 @@ const STATUS: Record<JobStatus, string> = {
 
 const scoreColor = (s: number) => (s >= 75 ? 'bg-emerald-600' : s >= 50 ? 'bg-amber-500' : 'bg-zinc-400')
 
-export default function Jobs({ initialJobId, onEdit }: { initialJobId?: number; onEdit: (jobId: number) => void }) {
+export default function Jobs({
+  initialJobId,
+  backLabel,
+  onBack,
+  onEdit,
+  onAgent
+}: {
+  initialJobId?: number
+  /** Set when the page was opened from another page (Applications, the editor…): shows a Back button */
+  backLabel?: string
+  onBack: () => void
+  onEdit: (jobId: number) => void
+  onAgent: (jobId: number) => void
+}) {
   const [jobs] = useLoad(() => api.jobs.list(), [], ['jobs-changed'])
   const [selected, setSelected] = useState<number | undefined>(initialJobId)
   const [statusFilter, setStatusFilter] = useState<JobStatus | 'all' | 'active'>('active')
@@ -77,7 +90,12 @@ export default function Jobs({ initialJobId, onEdit }: { initialJobId?: number; 
         <ManualAdd onAdded={setSelected} />
       </div>
       <div className="min-w-0 flex-1 overflow-auto">
-        {job ? <JobDetail key={job.id} job={job} onEdit={onEdit} /> : <div className="p-8 text-sm text-zinc-500">Select a job.</div>}
+        {backLabel && (
+          <button className="btn-sec mb-3" onClick={onBack} title="Back (Alt+←)">
+            ← Back to {backLabel}
+          </button>
+        )}
+        {job ? <JobDetail key={job.id} job={job} onEdit={onEdit} onAgent={onAgent} /> : <div className="p-8 text-sm text-zinc-500">Select a job.</div>}
       </div>
     </div>
   )
@@ -152,7 +170,7 @@ function ManualAdd({ onAdded }: { onAdded: (id: number) => void }) {
   )
 }
 
-function JobDetail({ job, onEdit }: { job: Job; onEdit: (jobId: number) => void }) {
+function JobDetail({ job, onEdit, onAgent }: { job: Job; onEdit: (jobId: number) => void; onAgent: (jobId: number) => void }) {
   const [busy, run] = useAction()
   const [showDesc, setShowDesc] = useState(false)
   const m = job.match
@@ -196,6 +214,17 @@ function JobDetail({ job, onEdit }: { job: Job; onEdit: (jobId: number) => void 
               ✨ Generate resume + cover letter
             </button>
           )}
+          <button
+            className="btn"
+            disabled={busy}
+            title="The agent opens the job in its browser, tailors your resume, applies and messages the recruiter"
+            onClick={async () => {
+              const r = await run(() => api.agent.start({ mode: 'apply-job', jobId: job.id }))
+              if (r) onAgent(job.id)
+            }}
+          >
+            🤖 Let the agent apply
+          </button>
           <button className="btn-sec" onClick={() => onEdit(job.id)}>
             Open editor
           </button>
@@ -211,6 +240,23 @@ function JobDetail({ job, onEdit }: { job: Job; onEdit: (jobId: number) => void 
                 {v}
               </option>
             ))}
+          </select>
+          <select
+            className="input w-auto"
+            value=""
+            title="The agent will never apply to it (manage it on the Blacklist page)"
+            onChange={(e) => {
+              const kind = e.target.value as 'job' | 'company'
+              if (!kind) return
+              void run(async () => {
+                await api.blacklist.add({ kind, label: kind === 'company' ? job.company : job.url, jobId: job.id, reason: 'Added from the Jobs page' })
+                if (job.status !== 'applied') await api.jobs.setStatus(job.id, 'discarded')
+              }, kind === 'company' ? `${job.company} blacklisted` : 'Job blacklisted')
+            }}
+          >
+            <option value="">🚫 Blacklist…</option>
+            <option value="job">Never apply to this job</option>
+            {job.company && <option value="company">Never apply to {job.company}</option>}
           </select>
           <button className="btn-danger ml-auto" onClick={() => confirm('Delete this job?') && run(() => api.jobs.delete(job.id))}>
             Delete

@@ -11,6 +11,7 @@ import {
   type Api,
   type AppEvent,
   type Application,
+  type BlacklistEntry,
   type CoverLetterDoc,
   type Fact,
   type FactSource,
@@ -32,6 +33,7 @@ import {
   type LogSource
 } from '@shared/types'
 import { itemToFacts } from '../../main/rag/facts'
+import { normalizeBlacklistValue } from '../../main/agent/blacklist'
 import { coverLetterHtml, resumeHtml } from '../../main/docs/templates'
 import { parseResumeText } from '@shared/resumeHeuristics'
 import { extractTextInBrowser, pickFile } from './browserExtract'
@@ -43,6 +45,7 @@ interface Store {
   jobs: Job[]
   apps: Application[]
   qa: QaEntry[]
+  blacklist: BlacklistEntry[]
   settings: Omit<Settings, 'hasKey'>
   excludedFacts: string[]
   usage: UsageRecord[]
@@ -70,6 +73,7 @@ function seed(): Store {
     jobs: [],
     apps: [],
     qa: [],
+    blacklist: [],
     settings: { ...defaultSettings },
     excludedFacts: [],
     usage: [],
@@ -116,7 +120,7 @@ function load(): Store {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const stored = JSON.parse(raw) as Partial<Store>
-      return { ...seed(), ...stored, excludedFacts: stored.excludedFacts ?? [], usage: stored.usage ?? [] } as Store
+      return { ...seed(), ...stored, excludedFacts: stored.excludedFacts ?? [], usage: stored.usage ?? [], blacklist: stored.blacklist ?? [] } as Store
     }
   } catch {
     /* no storage: start fresh */
@@ -308,7 +312,7 @@ function fakeLetter(job: Job, lang: 'pt' | 'en'): CoverLetterDoc {
 function ensureApp(jobId: number): Application {
   let a = db.apps.find((x) => x.jobId === jobId)
   if (!a) {
-    a = { id: nextId(), jobId, resume: null, coverLetter: null, status: 'draft', notes: '', appliedAt: null, updatedAt: now() }
+    a = { id: nextId(), jobId, resume: null, coverLetter: null, status: 'draft', notes: '', appliedAt: null, updatedAt: now(), archivedAt: null }
     db.apps.push(a)
   }
   return a
@@ -553,6 +557,34 @@ export function createMockApi(): Api {
           if (j) j.status = 'applied'
         }
         persist('applications-changed', 'jobs-changed')
+      },
+      async setArchived(id, archived) {
+        const a = db.apps.find((x) => x.id === id)
+        if (!a) return
+        a.archivedAt = archived ? now() : null
+        persist('applications-changed')
+      }
+    },
+    blacklist: {
+      async list() {
+        return clone(db.blacklist)
+      },
+      async add(e) {
+        const label = e.label.trim()
+        const value = normalizeBlacklistValue(e.kind, label)
+        if (!value) throw new Error('Type a company, job URL, keyword or profile URL.')
+        let entry = db.blacklist.find((x) => x.kind === e.kind && x.value === value)
+        if (entry) entry.reason = e.reason?.trim() || entry.reason
+        else {
+          entry = { id: db.seq++, kind: e.kind, value, label, reason: e.reason?.trim() ?? '', jobId: e.jobId ?? null, source: 'candidate', createdAt: now() }
+          db.blacklist.unshift(entry)
+        }
+        persist('blacklist-changed')
+        return clone(entry)
+      },
+      async delete(id) {
+        db.blacklist = db.blacklist.filter((x) => x.id !== id)
+        persist('blacklist-changed')
       }
     },
     qa: {
@@ -598,12 +630,32 @@ export function createMockApi(): Api {
           jobs: [],
           apps: [],
           qa: [],
+          blacklist: [],
           settings: { ...defaultSettings },
           excludedFacts: [],
           usage: [],
           seq: 1
         } satisfies Store)
         persist()
+      },
+      // Browser mode: the backup is the mock store itself (not compatible with the desktop app's file)
+      async exportData() {
+        const blob = new Blob([JSON.stringify({ format: 'job-search-rag-mock-backup', store: db }, null, 1)], { type: 'application/json' })
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = `job-search-backup-${new Date().toISOString().slice(0, 10)}.json`
+        a.click()
+        URL.revokeObjectURL(a.href)
+        return a.download
+      },
+      async importData() {
+        const file = await pickFile('.json,application/json')
+        if (!file) return null
+        const parsed = JSON.parse(await file.text()) as { format?: string; store?: Partial<Store> }
+        if (parsed.format !== 'job-search-rag-mock-backup' || !parsed.store) throw new Error('This file is not a browser-mode backup.')
+        Object.assign(db, { ...seed(), ...parsed.store })
+        persist('jobs-changed', 'applications-changed', 'facts-changed', 'blacklist-changed', 'usage-changed')
+        return { jobs: db.jobs.length, applications: db.apps.length, facts: db.facts.length }
       },
       async get() {
         return { ...clone(db.settings), hasKey: { claude: false, openai: false } }
@@ -628,6 +680,26 @@ export function createMockApi(): Api {
         persist('usage-changed')
         return '[browser mode] Mock AI — no real call was made.'
       }
+    },
+    // The agent needs Claude Code + a real browser: not available in browser mode
+    agent: {
+      async start() {
+        throw new Error('The background agent only runs in the desktop app (npm run dev).')
+      },
+      async stop() {},
+      async state() {
+        return { run: null, questions: [], events: [] }
+      },
+      async answer() {},
+      async checkBrowser() {
+        return { ok: false, detail: 'Not available in browser mode.' }
+      }
+    },
+    outreach: {
+      async list() {
+        return []
+      },
+      async delete() {}
     },
     logs: {
       async list() {

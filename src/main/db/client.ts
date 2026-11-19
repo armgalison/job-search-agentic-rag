@@ -71,6 +71,32 @@ CREATE TABLE IF NOT EXISTS ai_usage (
 );
 CREATE INDEX IF NOT EXISTS ai_usage_created ON ai_usage(created_at);
 
+CREATE TABLE IF NOT EXISTS outreach (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+  name TEXT NOT NULL DEFAULT '',
+  profile_url TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT '',
+  channel TEXT NOT NULL,
+  message TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS outreach_profile ON outreach(profile_url);
+
+CREATE TABLE IF NOT EXISTS blacklist (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  value TEXT NOT NULL,
+  label TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  job_id INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+  source TEXT NOT NULL DEFAULT 'candidate',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(kind, value)
+);
+
 CREATE TABLE IF NOT EXISTS qa_memory (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   question TEXT NOT NULL UNIQUE,
@@ -86,11 +112,18 @@ export function openDb(file: string): Database.Database {
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   db.exec(SCHEMA)
+  migrate(db)
   return db
 }
 
+/** Columns added after the first release (CREATE TABLE IF NOT EXISTS doesn't add them to existing databases). */
+function migrate(d: Database.Database): void {
+  const has = (table: string, col: string) => (d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === col)
+  if (!has('applications', 'archived_at')) d.exec('ALTER TABLE applications ADD COLUMN archived_at TEXT')
+}
+
 /** Tables in dependency order (children first), all wiped by resetAllData(). */
-const TABLES = ['embeddings', 'facts', 'applications', 'jobs', 'profile_items', 'qa_memory', 'ai_usage', 'kv']
+const TABLES = ['embeddings', 'facts', 'outreach', 'blacklist', 'applications', 'jobs', 'profile_items', 'qa_memory', 'ai_usage', 'kv']
 
 /**
  * Deletes ALL user data: profile, facts, embeddings, jobs, applications, saved answers,

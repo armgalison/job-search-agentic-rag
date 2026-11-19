@@ -3,6 +3,54 @@
 ## Unreleased
 
 ### Features
+- **Check email replies**: new agent task (Agent page, or "📬 Check email replies" on Applications) that reads
+  companies' answers in your inbox and moves the cards: Awaiting scheduling, Interview, Offer, Rejected, or adds
+  applications made outside the app from their confirmation emails. Reads Gmail through the claude.ai Gmail
+  connector (only search/read tools are allowed) or a webmail (Outlook/Hotmail…) in the agent's browser (Settings →
+  Agent → Inbox). Each email is recorded once; offer/rejected are never reopened by mistake. New `check-email` skill
+  and MCP tools `list_tracked_applications` and `update_application_from_email`; the card shows the latest next step.
+- **New board column "Awaiting scheduling"** (status `scheduling`) between Applied and Interview.
+- **Backup**: Settings → Backup exports all data and settings to one JSON file and imports it (replacing current
+  data). API keys are not exported (they are encrypted for this computer); embeddings are rebuilt after import.
+- **Back navigation**: Back returns to the page you came from (Applications → documents → job details → back to
+  Applications), also with the mouse back button and Alt+←. Cards on Applications have a "Details" link.
+- **Agent** (new page): fully automatic job search, application and outreach. Claude Code runs headless in the
+  background and drives a visible browser (Playwright MCP with Chrome/Edge and a persistent profile, or Claude in
+  Chrome). It saves and scores jobs, tailors the resume, writes and attaches cover letters, applies through Easy Apply
+  or the company's ATS, finds the job poster / recruiter / hiring manager and messages them. It only asks you about
+  knowledge missing from your profile (answers become facts) or human-only steps (login, CAPTCHA). Live activity log,
+  question/approval cards with OS notifications, Stop button, outreach history. "Let the agent apply" on a job.
+- **Skills**: one Claude Code skill per flow in the bundled `agent-plugin/` (job-agent, knowledge-grounding, find-jobs,
+  tailor-documents, cover-letter, easy-apply, external-apply, find-contacts, outreach-message, send-linkedin-message),
+  plus `human-writing`, built from Wikipedia's "Signs of AI writing".
+- **Agent search type**: a "Search type" select in "Search and apply": LinkedIn Jobs, Wellfound (startup jobs, also
+  applies on Wellfound with a note to the founders), Google (company career sites and ATS boards: Greenhouse, Lever,
+  Ashby, Workable, Gupy… plus Google Jobs) and recently funded startups (funding news from the last 3–18 months, then
+  each startup's open roles). New skills `find-jobs-wellfound`, `find-jobs-google`, `find-funded-startups`. Jobs
+  from outside LinkedIn are deduplicated by URL (tracking parameters ignored).
+- **Blacklist** (new page): companies, specific jobs, title keywords and people the agent must never apply to or
+  contact. Answering "Skip this job", "Never apply to this job/company" or "Never contact this person" during a run
+  adds an entry; so does telling the agent in an answer or in the standing instructions (`add_to_blacklist`). Every
+  run's prompt lists it and `check_jobs`, `save_job` and `request_permission` enforce it. "🚫 Blacklist…" on a job.
+- **Better searches**: new `search-strategy` skill used by every source (query matrix from the profile's roles,
+  synonyms and Portuguese titles; one location per search; pagination; widen recency when thin; page budget scaled
+  to the run; stop rules that don't give up after one weak query; per-query counts in the report). New
+  `check_jobs` tool triages a whole results page at once (new / known / applied / blacklisted), so known jobs are
+  not reopened. New "Remote job boards (LATAM-friendly)" source (Himalayas, Get on Board, Remotive, We Work
+  Remotely, Working Nomads, RemoteOK, Work at a Startup, Gupy, Programathor).
+- **Applications board**: drag and drop between columns, archive (drag onto the archive zone or 🗄 on a card),
+  "Show archived", filter by title/company.
+- **Never twice**: the agent reads the LinkedIn conversation and "Pending" invitations before messaging, and the
+  job page's "Applied" marker or the ATS account before applying, so things done by hand outside the app are
+  respected and remembered. `request_permission` refuses a Submit/Send for a job already applied to or a person
+  already contacted; any application past draft (interview, offer, rejected) counts as applied; earlier applications
+  at the same company are reported.
+- **App MCP server** for the agent (knowledge search, profile, save/analyze job, resume and cover letter files,
+  form-answer memory, `check_writing`, `ask_user`, `request_permission`, application and outreach records).
+- **Agent settings**: browser, model, minimum fit, per-run limits for applications and messages, outreach on/off,
+  always write a cover letter, ask before each Submit/Send, dry run, standing instructions.
+- **AI-writing checker** (`src/shared/writingCheck.ts`): the app's resume, cover-letter and form-answer generation now
+  follow the same writing rules; cover letters get one automatic revision when the checker flags something.
 - **LinkedIn window toolbar**: back, forward, reload/stop, LinkedIn Jobs (home), an address bar and "open in your
   browser". The address bar loads LinkedIn addresses, opens other sites in the system browser, and turns plain words
   into a LinkedIn job search. Shortcuts: Alt+←/→, F5/Ctrl+R, Ctrl+L/F6 (address bar), Esc (stop). The toolbar is

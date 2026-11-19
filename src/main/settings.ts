@@ -13,15 +13,16 @@ export function getSettings(): Settings {
     budget: { ...defaultSettings.budget, ...(stored.budget ?? {}) },
     prices: { ...(stored.prices ?? {}) },
     chatModel: { ...defaultSettings.chatModel, ...(stored.chatModel ?? {}) },
-    embedModel: { ...defaultSettings.embedModel, ...(stored.embedModel ?? {}) }
+    embedModel: { ...defaultSettings.embedModel, ...(stored.embedModel ?? {}) },
+    agent: { ...defaultSettings.agent, ...(stored.agent ?? {}) }
   }
   return { ...merged, hasKey: { claude: !!getKey('claude'), openai: !!getKey('openai') } }
 }
 
 export function saveSettings(s: StoredSettings): void {
   // Never persist hasKey, even if the renderer sends it
-  const { chatProvider, chatModel, embedProvider, embedModel, ollamaUrl, defaultLang, claudeCliPath, budget, prices } = s
-  kv.set('settings', { chatProvider, chatModel, embedProvider, embedModel, ollamaUrl, defaultLang, claudeCliPath, budget, prices })
+  const { chatProvider, chatModel, embedProvider, embedModel, ollamaUrl, defaultLang, claudeCliPath, budget, prices, agent } = s
+  kv.set('settings', { chatProvider, chatModel, embedProvider, embedModel, ollamaUrl, defaultLang, claudeCliPath, budget, prices, agent })
 }
 
 /** Merges a partial change into the stored settings (nested records are merged too). */
@@ -34,6 +35,7 @@ export function updateSettings(patch: Partial<StoredSettings>): void {
     chatModel: { ...cur.chatModel, ...(patch.chatModel ?? {}) },
     embedModel: { ...cur.embedModel, ...(patch.embedModel ?? {}) },
     budget: { ...cur.budget, ...(patch.budget ?? {}) },
+    agent: { ...cur.agent, ...(patch.agent ?? {}) },
     prices: patch.prices ?? cur.prices
   })
 }

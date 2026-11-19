@@ -1,10 +1,13 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, Notification, shell } from 'electron'
 import { openDb } from './db/client'
 import { registerIpc } from './ipc'
 import { setEventSink } from './events'
 import { initLogFile, logger } from './log'
 import { registerLinkedInIpc } from './linkedin/window'
+import { setQuestionNotifier } from './agent/session'
+import { stopAgent } from './agent/runner'
+import { stopMcpServer } from './agent/mcpServer'
 import type { AppEvent } from '@shared/types'
 
 let mainWin: BrowserWindow | null = null
@@ -47,10 +50,27 @@ app.whenReady().then(() => {
   process.on('unhandledRejection', (err) => logger.error('app', `Unhandled rejection: ${(err as Error)?.message ?? String(err)}`, (err as Error)?.stack))
   registerIpc(() => mainWin, emit)
   registerLinkedInIpc(emit)
+  // The agent waits for the candidate: make sure they notice
+  setQuestionNotifier((q) => {
+    if (Notification.isSupported()) {
+      const n = new Notification({ title: q.kind === 'approval' ? 'Agent: approval needed' : 'Agent has a question', body: q.question.slice(0, 200) })
+      n.on('click', () => {
+        mainWin?.show()
+        mainWin?.focus()
+      })
+      n.show()
+    }
+    mainWin?.flashFrame(true)
+  })
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('before-quit', () => {
+  stopAgent()
+  stopMcpServer()
 })
 
 app.on('window-all-closed', () => {

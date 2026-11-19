@@ -11,5 +11,5 @@
     "noEmit": true,
     "paths": { "@shared/*": ["./src/shared/*"] }
   },
-  "include": ["src/renderer/src/**/*", "src/shared/**/*", "src/preload/index.d.ts", "src/main/rag/facts.ts", "src/main/docs/templates.ts", "src/shared/pdfText.ts"]
+  "include": ["src/renderer/src/**/*", "src/shared/**/*", "src/preload/index.d.ts", "src/main/rag/facts.ts", "src/main/docs/templates.ts", "src/main/agent/blacklist.ts", "src/main/agent/history.ts", "src/shared/pdfText.ts"]
 }

@@ -8,7 +8,7 @@ const splitLines = (s: string) =>
     .map((x) => x.trim())
     .filter(Boolean)
 
-export default function Editor({ jobId, onBack }: { jobId: number; onBack: () => void }) {
+export default function Editor({ jobId, backLabel, onBack, onJob }: { jobId: number; backLabel: string; onBack: () => void; onJob?: () => void }) {
   const [job] = useLoad(() => api.jobs.get(jobId), [jobId])
   const [loaded] = useLoad(() => api.applications.getByJob(jobId), [jobId], ['applications-changed'])
   const [app, setApp] = useState<Application | null>(null)
@@ -66,9 +66,14 @@ export default function Editor({ jobId, onBack }: { jobId: number; onBack: () =>
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <button className="btn-sec" onClick={onBack}>
-          ← Job
+        <button className="btn-sec" onClick={onBack} title="Back (Alt+←)">
+          ← {backLabel}
         </button>
+        {onJob && (
+          <button className="btn-sec" onClick={onJob} title="Fit analysis, gaps and the original description">
+            Job details
+          </button>
+        )}
         <div className="min-w-0">
           <div className="truncate font-semibold">{job?.title}</div>
           <div className="text-xs text-zinc-500">{job?.company}</div>

@@ -61,7 +61,7 @@ export function resolveCliPath(configured: string, env: NodeJS.ProcessEnv = proc
   return cmd
 }
 
-function cleanEnv(): NodeJS.ProcessEnv {
+export function cleanEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env }
   delete env.ANTHROPIC_API_KEY
   delete env.ANTHROPIC_AUTH_TOKEN

@@ -18,6 +18,7 @@ const OPERATION: Record<string, string> = {
   'import-resume': 'Resume import',
   'easy-apply': 'Easy Apply',
   embeddings: 'Embeddings',
+  agent: 'Agent runs',
   test: 'Connection test'
 }
 
