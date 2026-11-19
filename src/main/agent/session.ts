@@ -15,6 +15,8 @@ let seq = 0
 const pending = new Map<string, { q: AgentQuestion; resolve: (answer: string) => void }>()
 /** Final Submit/Send clicks granted in this run */
 export const granted = { application: 0, message: 0 }
+/** Set by end_run (or the candidate's "Stop the run" answer): the run must not continue in a new attempt */
+export const runFlags: { ended: string | null } = { ended: null }
 
 let onQuestion: (q: AgentQuestion) => void = () => {}
 /** Lets the main process notify the user (OS notification, focus the window) when the agent asks something. */
@@ -33,10 +35,11 @@ export function agentState(): AgentState {
 const pushState = () => emit({ type: 'agent-state', state: { run, questions: [...pending.values()].map((p) => p.q), events: [] } })
 
 export function beginRun(task: AgentTask): AgentRunInfo {
-  run = { runId: randomUUID(), task, startedAt: new Date().toISOString(), endedAt: null, status: 'running', applications: 0, messages: 0, costUsd: null, summary: '' }
+  run = { runId: randomUUID(), task, startedAt: new Date().toISOString(), endedAt: null, status: 'running', applications: 0, messages: 0, costUsd: null, summary: '', attempt: 1 }
   events = []
   granted.application = 0
   granted.message = 0
+  runFlags.ended = null
   pushState()
   return run
 }
@@ -52,7 +55,7 @@ export function endRun(status: AgentRunInfo['status'], summary: string, costUsd:
   pushState()
 }
 
-export function patchRun(patch: Partial<Pick<AgentRunInfo, 'applications' | 'messages'>>): void {
+export function patchRun(patch: Partial<Pick<AgentRunInfo, 'applications' | 'messages' | 'attempt' | 'maxAttempts' | 'costUsd'>>): void {
   if (!run) return
   run = { ...run, ...patch }
   pushState()

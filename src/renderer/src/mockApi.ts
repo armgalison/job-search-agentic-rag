@@ -539,7 +539,7 @@ export function createMockApi(): Api {
           db.apps
             .map((a) => {
               const j = db.jobs.find((x) => x.id === a.jobId)
-              return j ? { ...a, job: { id: j.id, title: j.title, company: j.company, url: j.url } } : null
+              return j ? { ...a, job: { id: j.id, title: j.title, company: j.company, url: j.url, score: j.match?.score ?? null } } : null
             })
             .filter((x): x is NonNullable<typeof x> => !!x)
         )

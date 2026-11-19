@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ToastContext } from './hooks'
 import Applications from './pages/Applications'
+import DashboardPage from './pages/Dashboard'
 import Editor from './pages/Editor'
 import Jobs from './pages/Jobs'
 import ProfilePage from './pages/Profile'
@@ -10,9 +11,10 @@ import ConsolePage from './pages/Console'
 import AgentPage from './pages/Agent'
 import BlacklistPage from './pages/Blacklist'
 
-export type Route = { page: 'profile' } | { page: 'jobs'; jobId?: number } | { page: 'editor'; jobId: number } | { page: 'applications' } | { page: 'blacklist' } | { page: 'agent'; jobId?: number } | { page: 'usage' } | { page: 'console' } | { page: 'settings' }
+export type Route = { page: 'dashboard' } | { page: 'profile' } | { page: 'jobs'; jobId?: number } | { page: 'editor'; jobId: number } | { page: 'applications' } | { page: 'blacklist' } | { page: 'agent'; jobId?: number } | { page: 'usage' } | { page: 'console' } | { page: 'settings' }
 
 const PAGE_LABEL: Record<Route['page'], string> = {
+  dashboard: 'Dashboard',
   profile: 'My profile',
   jobs: 'Jobs',
   editor: 'Documents',
@@ -25,6 +27,7 @@ const PAGE_LABEL: Record<Route['page'], string> = {
 }
 
 const NAV: { page: Route['page']; label: string; icon: string }[] = [
+  { page: 'dashboard', label: 'Dashboard', icon: '📊' },
   { page: 'profile', label: 'My profile', icon: '👤' },
   { page: 'jobs', label: 'Jobs', icon: '💼' },
   { page: 'agent', label: 'Agent', icon: '🤖' },
@@ -42,7 +45,7 @@ interface ToastItem {
 }
 
 export default function App() {
-  const [route, setRoute] = useState<Route>({ page: 'profile' })
+  const [route, setRoute] = useState<Route>({ page: 'dashboard' })
   /** Pages visited through links (not the sidebar), so "Back" returns where the user came from */
   const [history, setHistory] = useState<Route[]>([])
   const go = useCallback(
@@ -130,6 +133,7 @@ export default function App() {
           </button>
         </aside>
         <main className="min-w-0 flex-1 overflow-auto p-6">
+          {route.page === 'dashboard' && <DashboardPage onApplications={() => go({ page: 'applications' })} onJobs={() => go({ page: 'jobs' })} />}
           {route.page === 'profile' && <ProfilePage />}
           {route.page === 'jobs' && (
             <Jobs

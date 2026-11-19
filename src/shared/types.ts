@@ -188,6 +188,9 @@ export interface Application {
   archivedAt: string | null
 }
 
+/** A board card: the application plus what the board shows of its job (score = fit score from the analysis, 0–100) */
+export type ApplicationListItem = Application & { job: Pick<Job, 'id' | 'title' | 'company' | 'url'> & { score: number | null } }
+
 export interface QaEntry {
   id: number
   question: string
@@ -266,6 +269,10 @@ export interface AgentSettings {
   emailSource: EmailSource
   /** Webmail address opened by the agent when emailSource is 'webmail' */
   webmailUrl: string
+  /** After an error (or a search that ended short of its goal) start a fresh attempt automatically */
+  autoContinue: boolean
+  /** Attempts per run, the first included */
+  maxAttempts: number
 }
 
 export const defaultSettings: Settings = {
@@ -294,7 +301,9 @@ export const defaultSettings: Settings = {
     alwaysCoverLetter: false,
     instructions: '',
     emailSource: 'gmail-connector',
-    webmailUrl: 'https://outlook.live.com/mail/'
+    webmailUrl: 'https://outlook.live.com/mail/',
+    autoContinue: true,
+    maxAttempts: 8
   },
   hasKey: { claude: false, openai: false }
 }
@@ -444,7 +453,7 @@ export interface Api {
     learnFromEdits(appId: number): Promise<{ added: number }>
   }
   applications: {
-    list(): Promise<(Application & { job: Pick<Job, 'id' | 'title' | 'company' | 'url'> })[]>
+    list(): Promise<ApplicationListItem[]>
     getByJob(jobId: number): Promise<Application | null>
     setStatus(id: number, status: ApplicationStatus): Promise<void>
     setArchived(id: number, archived: boolean): Promise<void>
@@ -629,6 +638,9 @@ export interface AgentRunInfo {
   messages: number
   costUsd: number | null
   summary: string
+  /** Current attempt (runs continue automatically after errors) */
+  attempt?: number
+  maxAttempts?: number
 }
 
 export interface AgentState {

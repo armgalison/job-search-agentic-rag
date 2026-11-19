@@ -2,6 +2,12 @@
 
 @custom-variant dark (@media (prefers-color-scheme: dark));
 
+/* Chart colors (validated for color-blind separation and 3:1 contrast on the card surface, light and dark) */
+:root { --series-1: #2a78d6; --series-2: #eb6834; --grid: #e4e4e7; --surface: #ffffff; }
+@media (prefers-color-scheme: dark) {
+  :root { --series-1: #3987e5; --series-2: #d95926; --grid: #27272a; --surface: #18181b; }
+}
+
 @layer base {
   html, body, #root { height: 100%; }
   body { @apply bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 antialiased; font-family: system-ui, sans-serif; }

@@ -4,6 +4,8 @@ import { normalizeJobUrl, normalizeProfileUrl } from '../agent/history'
 import {
   emptyProfile,
   type Application,
+  type ApplicationListItem,
+  type MatchResult,
   type ApplicationStatus,
   type CapturedJob,
   type Fact,
@@ -276,14 +278,17 @@ const toApp = (r: AppRow): Application => ({
 })
 
 export const applicationsRepo = {
-  list(): (Application & { job: Pick<Job, 'id' | 'title' | 'company' | 'url'> })[] {
+  list(): ApplicationListItem[] {
     const rows = getDb()
       .prepare(
-        `SELECT a.*, j.title AS j_title, j.company AS j_company, j.url AS j_url FROM applications a
+        `SELECT a.*, j.title AS j_title, j.company AS j_company, j.url AS j_url, j.match AS j_match FROM applications a
          JOIN jobs j ON j.id = a.job_id ORDER BY a.updated_at DESC`
       )
-      .all() as (AppRow & { j_title: string; j_company: string; j_url: string })[]
-    return rows.map((r) => ({ ...toApp(r), job: { id: r.job_id, title: r.j_title, company: r.j_company, url: r.j_url } }))
+      .all() as (AppRow & { j_title: string; j_company: string; j_url: string; j_match: string | null })[]
+    return rows.map((r) => ({
+      ...toApp(r),
+      job: { id: r.job_id, title: r.j_title, company: r.j_company, url: r.j_url, score: parse<MatchResult>(r.j_match)?.score ?? null }
+    }))
   },
   get(id: number): Application | null {
     const r = getDb().prepare('SELECT * FROM applications WHERE id = ?').get(id) as AppRow | undefined

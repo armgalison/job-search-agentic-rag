@@ -442,6 +442,21 @@ function AgentSection({ value: a, onChange }: { value: AgentSettings; onChange: 
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={a.dryRun} onChange={(e) => onChange({ dryRun: e.target.checked }, true)} /> Dry run: fill everything but never submit or send
         </label>
+        <label className="flex flex-wrap items-center gap-2">
+          <input type="checkbox" checked={a.autoContinue} onChange={(e) => onChange({ autoContinue: e.target.checked }, true)} /> Keep going after errors: start a fresh
+          attempt until the run has its applications, the Claude credits run out, or
+          <input
+            className="input w-16 py-0.5"
+            type="number"
+            min={1}
+            max={50}
+            aria-label="Attempts per run"
+            value={a.maxAttempts}
+            disabled={!a.autoContinue}
+            onChange={(e) => onChange({ maxAttempts: Math.max(1, Math.min(50, Number(e.target.value) || 1)) })}
+          />
+          attempts were made
+        </label>
       </div>
       <label className="mt-3 block">
         <span className="label">Standing instructions for every run (optional)</span>

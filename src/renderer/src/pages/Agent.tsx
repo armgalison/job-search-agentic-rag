@@ -107,7 +107,7 @@ function RunBadge({ run }: { run: NonNullable<AgentState['run']> }) {
   return (
     <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${color}`}>
       {run.status === 'running' ? '● Running' : run.status === 'done' ? 'Finished' : run.status === 'stopped' ? 'Stopped' : 'Failed'} · {Math.floor(secs / 60)}m{' '}
-      {secs % 60}s · {run.applications} applied · {run.messages} messages{run.costUsd != null ? ` · ≈$${run.costUsd.toFixed(2)}` : ''}
+      {secs % 60}s{(run.maxAttempts ?? 1) > 1 && (run.attempt ?? 1) > 1 ? ` · attempt ${run.attempt}/${run.maxAttempts}` : ''} · {run.applications} applied · {run.messages} messages{run.costUsd != null ? ` · ≈$${run.costUsd.toFixed(2)}` : ''}
     </span>
   )
 }

@@ -18,6 +18,7 @@ generated in Portuguese.
 
 - [Quick start](#quick-start)
 - [Screens and features](#screens-and-features)
+  - [Dashboard](#dashboard)
   - [My profile and knowledge base](#my-profile-and-knowledge-base)
   - [Jobs](#jobs)
   - [Document editor](#document-editor)
@@ -52,6 +53,23 @@ npm run dev        # Electron app with hot reload
 6. Follow everything on the **Applications** board; **Check email replies** moves the cards for you.
 
 ## Screens and features
+
+### Dashboard
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+The home page shows where the search stands today:
+
+- **Headline numbers**: jobs saved (and analyzed), applications sent (and drafts not sent yet), **response rate**
+  (replies ÷ applications sent), applications **awaiting interview scheduling** (highlighted, opens the board),
+  interviews and offers (and rejections), and this month's spend (and messages sent to recruiters).
+- **Activity per week**: jobs saved and applications sent over the last 12 weeks.
+- **Applications by status**: every card on the board, archived ones included.
+- **Fit score of analyzed jobs**: how well the jobs match your profile, split into applied / not applied, with your
+  minimum score marked and the average score of the jobs you applied to.
+- **Top companies**: where you sent the most applications.
+
+Hover any bar for its values; **Table** shows each chart's numbers as a table. Light and dark mode follow the system.
 
 ### My profile and knowledge base
 
@@ -145,7 +163,21 @@ Questions and approvals appear as cards on the page, with an OS notification. Ev
 **Controls** (Settings → Agent): browser (Chrome or Edge via Playwright with its own persistent profile, or the Claude
 in Chrome extension), model, minimum fit score, max applications and messages per run, outreach on/off, always write
 a cover letter, **ask me before each final Submit/Send** (off by default = fully automatic), **dry run** (fills
-everything, never submits) and standing instructions for every run.
+everything, never submits), **keep going after errors** (and how many attempts per run) and standing instructions
+for every run.
+
+**The agent does not stop at the first error.** A problem with one job (a broken form, a closed job, a page that
+won't load) is recorded as *failed* and the agent moves on to the next job. If the whole attempt ends early (Claude
+Code crashes, the browser is lost, or a search ends short of its goal), the app starts a **fresh attempt** of the same
+run 15 seconds later, telling it what was already done so nothing is repeated. It keeps going until:
+
+- the run has the applications it asked for (the smaller of *best N jobs* and *max applications per run*);
+- the **Claude usage limit or credits run out**, or the app's budget (Usage) blocks further spending;
+- the agent calls `end_run` (LinkedIn warned about automated activity, or you answered *Stop the run*);
+- 3 attempts in a row add no new application (no more matching jobs for now), or the attempt limit is reached;
+- you press **Stop**.
+
+The run header shows the current attempt; limits (applications, messages) count across all attempts of a run.
 
 Each step is a skill in the bundled Claude Code plugin [`agent-plugin/`](agent-plugin/skills): `job-agent`
 (orchestrator), `search-strategy`, `find-jobs`, `find-jobs-remote-boards`, `find-jobs-wellfound`, `find-jobs-google`,
@@ -159,7 +191,11 @@ Each step is a skill in the bundled Claude Code plugin [`agent-plugin/`](agent-p
 - A kanban board: **Draft → Applied → Awaiting scheduling → Interview → Offer → Rejected**. Drag cards between
   columns (or use the select on each card), drop them on *Archive* to hide them (archived jobs still count as applied
   for the agent), and filter by title or company.
-- Each card opens the resume/cover letter; **Details** opens the job's fit analysis.
+- Each card opens the resume/cover letter; **Details** opens the job's fit analysis. The **fit score badge** (green
+  ≥ 75%, amber ≥ 50%, gray below) shows how well the job matched your profile.
+- Cards in **Awaiting scheduling** have an **✉️ Open email** button that opens the company's email in your browser,
+  so you can pick a slot or answer right away (Gmail opens the message itself; for webmail the agent records the
+  message's address, otherwise the mailbox search for its subject opens).
 - **📬 Check email replies** starts the agent's email task for the chosen period (3–60 days):
 
 ![Check email replies](docs/screenshots/agent-email.png)
