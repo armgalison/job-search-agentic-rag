@@ -105,7 +105,7 @@ export default function Applications({ onOpen, onJob, onAgent }: { onOpen: (jobI
           📬 {nextStep(a)}
         </div>
       )}
-      <div className="mt-2 flex items-center gap-1 text-xs text-zinc-500">
+      <div className="mt-2 flex flex-wrap items-center gap-1 text-xs text-zinc-500">
         <button className="underline-offset-2 hover:text-indigo-600 hover:underline" onClick={() => onJob(a.jobId)}>
           Details
         </button>
