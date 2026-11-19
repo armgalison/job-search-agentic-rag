@@ -7,18 +7,12 @@ files:
   - out/**
   - package.json
   - "!scripts/**"
-  # Only the Windows binaries are needed in the Windows build
+  # The main process uses onnxruntime-node; the browser runtime is never loaded
   - "!node_modules/onnxruntime-web/**"
   # pdf.js: only the Node (legacy) build is used by the app; skip the browser builds, sourcemaps and the canvas addon
   - "!node_modules/pdfjs-dist/{build,web,image_decoders,types}/**"
   - "!node_modules/@napi-rs/**"
-  - "!node_modules/onnxruntime-node/bin/napi-v*/linux/**"
-  - "!node_modules/onnxruntime-node/bin/napi-v*/darwin/**"
-  - "!node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**"
-  - "!node_modules/better-sqlite3/prebuilds/{linux,linuxmusl,darwin}-*.node"
   - "!node_modules/better-sqlite3/{deps,src}/**"
-  - "!node_modules/@img/sharp-*linux*/**"
-  - "!node_modules/@img/sharp-*darwin*/**"
   - "!**/*.{map,md,ts}"
   - "**/*.d.ts"
 asarUnpack:
@@ -41,7 +35,13 @@ extraResources:
 beforePack: scripts/before-pack.cjs
 npmRebuild: false
 nodeGypRebuild: false
+# Each platform keeps only its own native binaries (these patterns are added to the top-level `files`)
 win:
+  files:
+    - "!node_modules/onnxruntime-node/bin/napi-v*/{linux,darwin}/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**"
+    - "!node_modules/better-sqlite3/prebuilds/{linux,linuxmusl,darwin,win32-arm64}*.node"
+    - "!node_modules/@img/sharp-*{linux,darwin}*/**"
   # zip = unzip and run "Job Search RAG.exe". (NSIS installer/portable targets need Wine when built on Linux;
   # build them from Windows with `npm run build:win` if you want an installer.)
   target:
@@ -50,3 +50,29 @@ win:
   # Editing the .exe resources/signing needs Wine on Linux; skipped for local test builds (unsigned)
   signAndEditExecutable: false
   artifactName: "${productName}-${version}-win-x64.${ext}"
+linux:
+  files:
+    - "!node_modules/onnxruntime-node/bin/napi-v*/{win32,darwin}/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v*/linux/arm64/**"
+    - "!node_modules/better-sqlite3/prebuilds/{win32,linuxmusl,darwin,linux-arm64}*.node"
+    - "!node_modules/@img/sharp-*{win32,darwin}*/**"
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Office
+  artifactName: "${productName}-${version}-linux-x86_64.${ext}"
+mac:
+  # onnxruntime-node only ships an Apple Silicon (arm64) binary for macOS
+  files:
+    - "!node_modules/onnxruntime-node/bin/napi-v*/{win32,linux}/**"
+    - "!node_modules/better-sqlite3/prebuilds/{win32,linux,linuxmusl,darwin-x64}*.node"
+    - "!node_modules/@img/sharp-*{win32,linux}*/**"
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  category: public.app-category.productivity
+  # Unsigned build (no Apple Developer certificate): macOS asks to confirm on first open
+  identity: null
+  artifactName: "${productName}-${version}-mac-arm64.${ext}"
